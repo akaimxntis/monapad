@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @font-face {
+        font-family: "Figtree";
+        src: url("./font/Figtree-Regular.ttf") format("truetype");
+        font-weight: 400;
+        font-style: normal;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        color: black;
+        overflow: hidden;
+        font-family: "Figtree", sans-serif;
+        height: 100vh;
+        width: 100vw;
+      }
+      .text {
+        height: 100%;
+        width: fit-content;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        background: rgba(255, 255, 255, 0.75);
+        border: 1px solid gray;
+        box-sizing: border-box;
+        padding: 0 2px 1px 2px;
+        border-radius: 5px;
+      }
+      .text svg path,
+      .text svg circle {
+        vector-effect: non-scaling-stroke;
+      }
+      .text:not(.minimal) svg path {
+        stroke: black;
+        stroke-width: 1;
+      }
+      .text.minimal svg path,
+      .text.minimal svg circle {
+        stroke: red;
+        stroke-width: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="text"></div>
+  </body>
+  <script>
+    const el = document.querySelector(".text");
+    const stateTextMap = {
+      forbidden: `
+        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none"
+        stroke-linecap="round" stroke-linejoin="round" class="icon icon-tabler icons-tabler-outline icon-tabler-ban">
+          <circle cx="12" cy="12" r="9" fill="none" />
+          <path d="M5.7 5.7l12.6 12.6" fill="none" />
+        </svg>
+      `,
+      move: `
+        <svg  xmlns="http://www.w3.org/2000/svg"  width="17"  height="17"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"  class="icon icon-tabler icons-tabler-outline icon-tabler-arrow-right">
+          <path d="M5 12l14 0" />
+          <path d="M13 18l6 -6" />
+          <path d="M13 6l6 6" />
+        </svg>
+      `,
+      new: `
+        <svg  xmlns="http://www.w3.org/2000/svg"  width="17"  height="17"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="1"  stroke-linecap="round"  stroke-linejoin="round"  class="icon icon-tabler icons-tabler-outline icon-tabler-browser-plus"  >
+          <path d="M4 8h16"/>
+          <path d="M12 20h-6a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v6"/>
+          <path d="M8 4v4"/>
+          <path d="M16 19h6"/>
+          <path d="M19 16v6"/>
+        </svg>
+      `,
+    };
+
+    window.electronAPI.onUpdateState((event, state) => {
+      el.innerHTML = stateTextMap[state] || "";
+      state === "forbidden" ? el.classList.add("minimal") : el.classList.remove("minimal");
+    });
+  </script>
+</html>

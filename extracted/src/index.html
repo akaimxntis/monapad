@@ -1,0 +1,1861 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Monapad</title>
+    <style>
+      /* Figtree: UI en-US font */
+      /* (Yu Gothic UI: UI ja-JP font) */
+      @font-face {
+        font-family: "Figtree";
+        src: url("./font/Figtree-Regular.ttf") format("truetype");
+        font-weight: 400;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Figtree";
+        src: url("./font/Figtree-Medium.ttf") format("truetype");
+        font-weight: 500;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Figtree";
+        src: url("./font/Figtree-Bold.ttf") format("truetype");
+        font-weight: 700;
+        font-style: normal;
+      }
+      /* Iosevka: Editor Default en-US font */
+      @font-face {
+        font-family: "Iosevka";
+        src: url("./font/Iosevka-Regular.ttf") format("truetype");
+        font-weight: 400;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Iosevka";
+        src: url("./font/Iosevka-Italic.ttf") format("truetype");
+        font-weight: 400;
+        font-style: italic;
+      }
+      @font-face {
+        font-family: "Iosevka";
+        src: url("./font/Iosevka-Bold.ttf") format("truetype");
+        font-weight: 700;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Iosevka";
+        src: url("./font/Iosevka-BoldItalic.ttf") format("truetype");
+        font-weight: 700;
+        font-style: italic;
+      }
+      /* Migu 1M: Editor Default ja-JP font */
+      @font-face {
+        font-family: "Migu 1M";
+        src: url("./font/migu-1m-regular.ttf") format("truetype");
+        font-weight: 400;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Migu 1M";
+        src: url("./font/migu-1m-italic.ttf") format("truetype");
+        font-weight: 400;
+        font-style: italic;
+      }
+      @font-face {
+        font-family: "Migu 1M";
+        src: url("./font/migu-1m-bold.ttf") format("truetype");
+        font-weight: 700;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Migu 1M";
+        src: url("./font/migu-1m-bold-italic.ttf") format("truetype");
+        font-weight: 700;
+        font-style: italic;
+      }
+      :root {
+        --color1: #000000; /* editor, modal background */
+        --color2: #0c0c0e; /* toolbar, statusbar, menu, message background */
+        --color3: #18181a; /* button hover, modal button */
+        --editorText: #b6b9bf; /* text color */
+        --grayOut: #565b66; /* grayed out text and element color */
+        --highlight: #569cd6; /* accent color, link color */
+        --btnHighlight: #3074ac; /* modal highlight button */
+        --windowClose: #e81123; /* window close */
+        --warn: #cf5d6e; /* deleted file title */
+
+        /* You can specify one or more fonts to be used in the editor in order of priority */
+        /* If this field is not empty, the font setting in the app will be ignored */
+        /* Specify with the fallback font like: */
+        /* --editor-font: "Yu Gothic UI", "Meiryo", "Hiragino Sans", sans-serif; */
+        --editor-font: ;
+
+        /* text, syntax highlight color */
+        /* style: bold italic underline (set with space if multiple) */
+        --heading1: var(--highlight); /* heading 1 */
+        --heading1Style: ;
+
+        --heading2: #a0bfd9; /* heading 2 */
+        --heading2Style: ;
+
+        --heading3: var(--editorText); /* heading 3 */
+        --heading3Style: ;
+
+        --bulletPoint: var(--highlight); /* bullet point */
+        --bulletPointStyle: ;
+
+        --numberList: var(--highlight); /* bullet point */
+        --numberListStyle: ;
+
+        --subText: var(--grayOut); /* sub text */
+        --subTextStyle: ;
+
+        --blockQuote: var(--editorText); /* block quote */
+        --blockQuoteStyle: italic;
+
+        --inlineCode: var(--warn); /* inline code */
+        --inlineCodeStyle: ;
+
+        --codeBlockFence: #3b414d; /* code block fence */
+        --codeBlockFenceStyle: ;
+
+        --codeBlock: #63829b; /* code block */
+        --codeBlockStyle: ;
+
+        /* monaco editor color */
+        --vscode-editor-background: var(--color1);
+        --vscode-editor-foreground: var(--editorText);
+        --vscode-errorForeground: var(--warn);
+        --vscode-inputValidation-errorBorder: var(--warn);
+        --vscode-editor-lineHighlightBackground: var(--color2);
+        --vscode-editor-lineHighlightBorder: #00000000;
+        --vscode-editor-wordHighlightBackground: #00000000;
+        --vscode-editorWidget-background: var(--color2);
+        --vscode-editorHoverWidget-background: var(--color2);
+        --vscode-input-background: var(--color1);
+        --vscode-list-activeSelectionBackground: var(--color3);
+        --vscode-list-dropBackground: var(--color3);
+        --vscode-menu-selectionBackground: var(--color3);
+        --vscode-list-hoverBackground: var(--color3);
+        --vscode-editorStickyScrollHover-background: var(--color3);
+        --vscode-button-hoverBackground: var(--color3);
+        --vscode-badge-background: var(--color3);
+        --vscode-editorWidget-border: var(--color3);
+        --vscode-editorHoverWidget-border: var(--color3);
+        --vscode-editorGutter-foldingControlForeground: var(--grayOut);
+        --vscode-editorLineNumber-foreground: #565b6680;
+        --vscode-editorLineNumber-activeForeground: var(--grayOut);
+        --vscode-editor-selectionBackground: #569cd644;
+
+        /* find match */
+        --vscode-editor-findMatchBackground: #d18616a1; /* current match position */
+
+        /* navigation widget */
+        --vscode-pickerGroup-foreground: var(--grayOut); /* symbols() text */
+        --vscode-quickInputList-focusBackground: var(--color3); /* focus background */
+        --vscode-symbolIcon-classForeground: var(--highlight); /* icon */
+        --vscode-symbolIcon-functionForeground: #a0bfd9; /* icon */
+        --vscode-symbolIcon-methodForeground: var(--editorText); /* icon */
+        --vscode-quickInputList-focusIconForeground: var(--editorText); /* focus icon */
+        --vscode-quickInput-foreground: var(--grayOut); /* text */
+        --vscode-quickInputList-focusForeground: var(--editorText); /* forcus text */
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          "figtree",
+          Yu Gothic UI,
+          Meiryo,
+          Hiragino Sans,
+          sans-serif;
+        background: var(--color1);
+        color: var(--editorText);
+        overflow: hidden;
+      }
+
+      /* body::after {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        box-shadow: inset 0 0 0 1px var(--grayOut);
+      } */
+
+      /* monaco editor style */
+      /* markdown bracket highlighting color */
+      .monaco-editor .bracket-highlighting-0,
+      .monaco-editor .bracket-highlighting-1,
+      .monaco-editor .bracket-highlighting-2 {
+        color: #ce9178 !important;
+      }
+      .monaco-editor .marker-transparent {
+        opacity: 0.25;
+      }
+      .monaco-editor .unexpected-closing-bracket {
+        color: var(--editorText) !important;
+      }
+      .monaco-editor .line-numbers {
+        font-family: "Consolas", "Courier New", monospace !important;
+        user-select: none;
+      }
+      /* editor scroll shadow */
+      .monaco-editor .scroll-decoration {
+        height: 10px !important;
+        box-shadow: var(--color1) 0 6px 6px 0px inset !important;
+        pointer-events: none;
+      }
+      .monaco-editor .minimap-shadow-visible {
+        width: 10px !important;
+        left: -10px !important;
+        box-shadow: var(--color1) -6px 0 6px 0px inset !important;
+        pointer-events: none;
+      }
+      /* go to line widget input focus border */
+      :focus-visible {
+        outline: var(--highlight) solid 1px;
+        border-radius: 2px;
+      }
+      /* remove right gap in go to line widget */
+      .monaco-action-bar.quick-input-inline-action-bar {
+        display: none !important;
+      }
+      .monaco-editor .margin-view-overlays .codicon-folding-manual-collapsed,
+      .monaco-editor .margin-view-overlays .codicon-folding-manual-expanded,
+      .monaco-editor .margin-view-overlays .codicon-folding-expanded,
+      .monaco-editor .margin-view-overlays .codicon-folding-collapsed {
+        transition: none !important;
+      }
+      /* tooltip */
+      .workbench-hover-container {
+        /* display: none !important; */
+      }
+      .monaco-hover.workbench-hover {
+        bottom: -33px !important;
+        left: 19px !important;
+      }
+      /* tooltip arrow */
+      .workbench-hover-pointer {
+        margin-bottom: -33px !important;
+        margin-left: 19px !important;
+      }
+
+      line,
+      rect,
+      polyline {
+        stroke: var(--editorText) !important;
+      }
+      button {
+        font-family: inherit;
+      }
+      #menu button,
+      #recent-menu button,
+      #theme-menu button,
+      #custom-context-menu button,
+      #tab-context-menu button {
+        width: 100%;
+        height: 28px;
+        font-size: 14px;
+        line-height: 28px;
+      }
+      .disabled {
+        color: var(--grayOut) !important;
+        pointer-events: none;
+      }
+      .disabled line,
+      .disabled polyline {
+        stroke: var(--grayOut) !important;
+      }
+      #container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      #toolbar {
+        display: flex;
+        position: fixed;
+        align-items: center;
+        background: var(--color1);
+        width: 100%;
+        height: 35px;
+        overflow: visible;
+        -webkit-app-region: drag;
+      }
+      #menu-button {
+        -webkit-app-region: no-drag;
+        background: var(--color1);
+        color: var(--editorText);
+        border: none;
+        font-size: 11px;
+        letter-spacing: 0.2em;
+        cursor: pointer;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 100%;
+      }
+      /* add border top to left margin of #editor */
+      #menu-button::before {
+        content: "";
+        position: absolute;
+        top: 35px;
+        left: 0;
+        width: 20px;
+        height: 1px;
+        background-color: var(--color3);
+      }
+      #menu-button svg line {
+        stroke: var(--grayOut) !important;
+        stroke-width: 2px;
+      }
+      #menu-button svg {
+        overflow: visible;
+      }
+      #menu-button:hover {
+        background: var(--color1);
+      }
+      #menu-button:hover svg line {
+        stroke: var(--highlight) !important;
+      }
+      #menu {
+        position: fixed;
+        top: 40px;
+        left: 0px;
+        background: var(--color2);
+        display: none;
+        z-index: 9998;
+        width: 260px;
+        padding: 5px 0;
+        max-height: calc(100vh - 70px);
+        overflow-y: auto;
+        border: solid 1px var(--color3);
+        user-select: none;
+        box-sizing: border-box;
+      }
+      #menu button {
+        position: relative;
+        background: none;
+        color: var(--editorText);
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        padding: 0 10px;
+      }
+      #menu button:hover {
+        background: var(--color3);
+      }
+      #menu .hr,
+      #recent-menu .hr,
+      #custom-context-menu .hr,
+      #tab-context-menu .hr,
+      #theme-menu .hr {
+        height: 1px;
+        background: var(--color3);
+        margin: 5px 10px;
+        flex-shrink: 0;
+      }
+      #menu,
+      #custom-context-menu,
+      #tab-context-menu,
+      #theme-menu,
+      #recent-menu,
+      #file-saved,
+      #file-opened {
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.7);
+      }
+      #menu button .label {
+        display: inline-block;
+        width: 55%;
+      }
+      .scrollable::-webkit-scrollbar {
+        width: 10px;
+      }
+      .scrollable::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .scrollable::-webkit-scrollbar-thumb {
+        background: var(--color3);
+      }
+      .scrollable::-webkit-scrollbar-button,
+      .scrollable::-webkit-scrollbar-corner {
+        display: none;
+      }
+      #theme-menu {
+        position: absolute;
+        left: 260px;
+        margin-left: 5px;
+        background: var(--color2);
+        display: none;
+        z-index: 9998;
+        width: fit-content;
+        min-width: 120px;
+        max-width: min(300px, calc(100vw - 260px));
+        padding: 5px 0;
+        border: solid 1px var(--color3);
+        user-select: none;
+        box-sizing: border-box;
+        overflow-y: auto;
+      }
+
+      #theme-menu button {
+        position: relative;
+        background: none;
+        color: var(--editorText);
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        padding: 0 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      #theme-menu button[data-theme="custom-theme"] span {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #theme-menu button:hover {
+        background: var(--color3);
+      }
+
+      .checkmark {
+        display: none;
+        opacity: 1;
+      }
+
+      #theme-menu button .checkmark {
+        display: inline-block;
+        opacity: 0;
+        margin-left: 20px;
+      }
+
+      #theme-menu button.active .checkmark {
+        opacity: 1;
+      }
+
+      #recent-menu {
+        position: absolute;
+        left: 260px;
+        margin-left: 5px;
+        background: var(--color2);
+        display: none;
+        z-index: 9998;
+        padding: 5px 0;
+        border: solid 1px var(--color3);
+        max-width: calc(100vw - 260px - 5px);
+        min-width: 120px;
+        user-select: none;
+        box-sizing: border-box;
+        overflow-y: auto;
+      }
+
+      #recent-menu button {
+        position: relative;
+        background: none;
+        color: var(--editorText);
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        padding: 0 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        max-width: 100%;
+        overflow: hidden;
+      }
+      #recent-menu button span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #recent-menu button:hover {
+        background: var(--color3);
+      }
+      .clear-recent-btn {
+        color: var(--warn) !important;
+      }
+
+      #toggleStatusBar,
+      #openRecent,
+      #changeTheme,
+      #word-wrap,
+      #toggle-markdown {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border: none;
+      }
+      #tabs-container {
+        height: 100%;
+        display: flex;
+        max-width: calc(100vw - 230px);
+        flex-shrink: 1;
+        flex-grow: 0;
+        align-items: center;
+        overflow: visible;
+      }
+      #tabs {
+        display: flex;
+        flex-grow: 1;
+        min-width: 0;
+        height: 100%;
+        overflow: visible;
+        align-items: center;
+        user-select: none;
+        -webkit-app-region: no-drag;
+      }
+      #tabs::-webkit-scrollbar {
+        width: 0px;
+        background: transparent;
+        /* height: 3px; */
+      }
+      #tabs::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      /* #tabs::-webkit-scrollbar-thumb {
+        background: var(--color3);
+      } */
+      #tabs::-webkit-scrollbar-button,
+      #tabs::-webkit-scrollbar-corner {
+        display: none;
+      }
+
+      /* #tab-container > #tabs(.dragging) > .tab(.active, .has-reload-button) */
+      .tab {
+        -webkit-app-region: no-drag;
+        display: flex;
+        box-sizing: border-box;
+        align-items: center;
+        justify-content: space-between;
+        flex: 1 1 0;
+        height: 34px;
+        width: 220px;
+        max-width: 220px;
+        min-width: 0;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        overflow: visible;
+        background: var(--color1);
+        padding: 0 10px;
+        font-size: 13px;
+        position: relative;
+        cursor: default;
+        color: var(--grayOut);
+        border-top: 1px solid #00000000;
+        border-right: 1px solid #00000000;
+        border-left: 1px solid #00000000;
+      }
+      .tab:not(.active):not(.prev-active)::before {
+        content: "";
+        position: absolute;
+        right: -1px;
+        top: 25%;
+        height: 50%;
+        width: 1px;
+        background: var(--color3);
+      }
+      .tab:first-of-type:not(.active)::after {
+        content: "";
+        position: absolute;
+        left: -1px;
+        top: 25%;
+        height: 50%;
+        width: 1px;
+        background: var(--color3);
+      }
+      .tab:hover,
+      .tab:not(.active):hover {
+        color: var(--editorText);
+      }
+      /* active tab */
+      .tab.active {
+        height: 36px;
+        background: var(--color1);
+        color: var(--editorText);
+        border-top: 1px solid var(--highlight);
+        border-right: 1px solid var(--color3);
+        border-left: 1px solid var(--color3);
+        z-index: 2 !important;
+      }
+      /* non active tab */
+      .tab:not(.active) {
+        z-index: 1 !important;
+        color: var(--grayOut);
+      }
+      /* non active tab while active tab is being dragged */
+      .dragging .tab:not(.active):hover {
+        color: var(--grayOut);
+        cursor: default;
+      }
+      /* tab with reload button */
+      .tab.has-reload-button {
+        padding-left: 5px;
+      }
+
+      /* close button: (.tab >) .close(.show-unsaved) > .close-svg, .unsaved-dot */
+      /* parent (.close) */
+      .tab .close {
+        cursor: pointer;
+        font-size: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      /* child (.close-svg) */
+      .tab .close .close-svg {
+        display: none;
+        line-height: 0;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        margin-right: -5px;
+        border-radius: 5px;
+      }
+      .tab .close .close-svg:hover {
+        background: var(--color3);
+      }
+      #tabs:not(.compact) .tab:hover .close .close-svg,
+      .tab.active .close .close-svg,
+      #tabs:not(.compact) .tab:hover .close.show-unsaved .close-svg,
+      #tabs.compact .tab.active:hover .close .close-svg {
+        display: flex;
+      }
+      .tab .close.show-unsaved .close-svg {
+        display: none;
+      }
+      /* child (.unsaved-dot) */
+      .tab .close .unsaved-dot {
+        display: none;
+        width: 8px;
+        height: 8px;
+        background: var(--editorText);
+        border-radius: 50%;
+        margin: 2px;
+      }
+      .tab:not(.active) .close .unsaved-dot {
+        background: var(--grayOut);
+      }
+      .tab .close.show-unsaved .unsaved-dot {
+        display: block;
+      }
+      #tabs:not(.compact) .tab:hover .close.show-unsaved .unsaved-dot,
+      #tabs.compact .tab.active:hover .close.show-unsaved .unsaved-dot {
+        display: none;
+      }
+      #tabs.compact .tab:hover .close.show-unsaved .unsaved-dot {
+        background: var(--editorText);
+      }
+      #tabs.compact .tab:not(.active) .close.show-unsaved {
+        pointer-events: none;
+      }
+
+      /* name span: (.tab >) .name > .reload-button */
+      .tab .name {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: flex;
+        text-decoration: none;
+        -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+        mask-image: linear-gradient(to right, black 80%, transparent 100%);
+        -webkit-mask-size: 100% 100%;
+        mask-size: 100% 100%;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        line-height: 20px;
+      }
+      #tabs:not(.compact) .tab:hover .name,
+      .tab.active .name,
+      .tab .name:has(+ .show-unsaved) {
+        max-width: calc(100% - 17px);
+      }
+      /* warned name span */
+      .tab .name.warn,
+      .tab:hover .name.warn {
+        text-decoration: line-through;
+        color: var(--warn);
+        opacity: 1;
+      }
+      .tab:not(.active) .name.warn {
+        opacity: 0.5;
+      }
+      /* reload button */
+      .tab .reload-button {
+        opacity: 1;
+        min-width: 20px;
+        height: 20px;
+        padding: 0;
+        margin-right: 5px;
+        border-radius: 5px;
+        background: none;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tab .reload-button:hover {
+        background: var(--color3);
+      }
+      .tab:not(.active) .reload-button {
+        opacity: 0.5;
+      }
+      .tab:not(.active):hover .reload-button {
+        opacity: 1;
+      }
+      .tab .reload-button svg {
+        width: 12px;
+        height: 12px;
+        overflow: visible;
+      }
+      .tab .reload-button svg path {
+        stroke-width: 2px;
+        stroke: var(--highlight);
+      }
+
+      #add-tab {
+        display: flex;
+        flex-shrink: 0;
+        -webkit-app-region: no-drag;
+        background: var(--color1);
+        color: var(--editorText);
+        border: none;
+        font-size: 18px;
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        min-width: 26px;
+        height: 26px;
+        margin: 0 5px;
+        border-radius: 5px;
+      }
+      #add-tab:hover {
+        background: var(--color3);
+      }
+      #toolbar-drag-fill {
+        flex-grow: 1;
+        height: 100%;
+        -webkit-app-region: drag;
+        pointer-events: none;
+      }
+      #window-controls {
+        display: flex;
+        margin-left: auto;
+        height: 100%;
+        -webkit-app-region: no-drag;
+      }
+
+      .window-button {
+        width: 40px;
+        height: 100%;
+        background: var(--color1);
+        border: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+      }
+
+      .window-button svg {
+        width: 11px;
+        height: 11px;
+      }
+      #min-button:hover,
+      #max-button:hover {
+        background: var(--color3);
+      }
+      #close-button:hover {
+        background: var(--windowClose);
+      }
+      #close-button:hover line {
+        stroke: #fff !important;
+      }
+
+      button:focus,
+      .tab:focus,
+      #editor:focus {
+        outline: none;
+      }
+      #editor {
+        flex: 1;
+        box-sizing: border-box;
+        background: var(--color1);
+        color: var(--editorText);
+        border: none;
+        resize: none;
+        margin-top: 35px;
+        border-top: 1px solid var(--color3);
+      }
+      #status-bar {
+        height: 25px;
+        background: var(--color2);
+        font-size: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 10px;
+        box-sizing: border-box;
+        color: var(--grayOut);
+        user-select: none;
+        min-width: 0;
+        border-top: 1px solid var(--color3);
+      }
+      #status-left {
+        line-height: 25px;
+        flex: 1;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        margin-top: -1px;
+      }
+      #status-right {
+        line-height: 25px;
+        display: flex;
+        flex-shrink: 0;
+        margin-top: -1px;
+      }
+      #status-right span {
+        margin-left: 20px;
+        white-space: nowrap;
+      }
+      #zoom-level {
+        width: 30px;
+        text-align: right;
+      }
+
+      .message {
+        position: fixed;
+        left: 50%;
+        bottom: 15%;
+        transform: translate(-50%, 20px);
+        background: var(--color2);
+        color: var(--editorText);
+        padding: 10px 20px;
+        font-size: 14px;
+        border: solid 1px var(--color3);
+        z-index: 9997;
+        opacity: 0;
+        pointer-events: none;
+        transition:
+          opacity 0.3s ease,
+          transform 0.3s ease;
+      }
+      .message.show {
+        opacity: 1;
+        transform: translate(-50%, 0);
+      }
+      #confirm-save-background,
+      #file-drop-background {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.75);
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      }
+      #confirm-save-background {
+        pointer-events: all;
+      }
+      #file-drop-background {
+        pointer-events: none;
+      }
+      #file-drop {
+        pointer-events: none;
+        display: none;
+        width: 300px;
+        height: 200px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        background: var(--highlight);
+        color: color-mix(in srgb, black 70%, var(--highlight) 30%);
+        outline: 2px dashed color-mix(in srgb, white 40%, var(--highlight) 40%);
+        outline-offset: -12.5px;
+        border-radius: 17px;
+      }
+      #file-drop img {
+        width: 100px;
+      }
+      #file-drop p {
+        margin: 10px 0;
+        font-size: 16px;
+        font-weight: 500;
+      }
+      #confirm-save,
+      #confirm-save-window {
+        color: var(--editorText);
+        padding: 20px;
+        background: var(--color1);
+        text-align: center;
+        min-width: min(100vw, 250px);
+        max-width: 400px;
+        height: auto;
+        min-height: 80px;
+        display: none;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        border: solid 1px var(--color3);
+      }
+
+      #confirm-save p,
+      #confirm-save-window p {
+        margin-block-start: 0;
+        margin-block-end: 0;
+        margin-bottom: 15px;
+        font-size: 16px;
+        line-height: 1.5;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+        word-break: break-word;
+      }
+
+      #confirm-save .confirm-buttons {
+        display: flex;
+        justify-content: space-between;
+        width: auto;
+        gap: 10px;
+      }
+      #confirm-save-window .confirm-buttons {
+        display: flex;
+        justify-content: space-between;
+        width: auto;
+        gap: 10px;
+      }
+
+      #confirm-save .confirm-buttons button,
+      #confirm-save-window .confirm-buttons button {
+        display: flex;
+        padding: 8px 16px;
+        background: var(--color3);
+        color: var(--editorText);
+        border: none;
+        cursor: pointer;
+      }
+      #confirm-save-window .confirm-buttons #confirm-save-all,
+      #confirm-save .confirm-buttons #confirm-save-yes {
+        background: var(--btnHighlight);
+      }
+      #confirm-save-window .confirm-buttons #confirm-save-all:hover,
+      #confirm-save .confirm-buttons #confirm-save-yes:hover {
+        background: color-mix(in srgb, black 10%, var(--btnHighlight) 90%);
+      }
+
+      #confirm-save .confirm-buttons button:hover,
+      #confirm-save-window .confirm-buttons button:hover,
+      #about button:hover {
+        background: color-mix(in srgb, white 10%, var(--color3) 90%);
+      }
+
+      #about {
+        display: none;
+        flex-direction: column;
+        padding: 20px;
+        background: var(--color1);
+        max-width: min(calc(100vw - 100px), 360px);
+        max-height: calc(100vh - 100px);
+        border: solid 1px var(--color3);
+        font-size: 14px;
+      }
+      #about-main {
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+      }
+      #about a,
+      .settings-info a {
+        color: var(--highlight);
+      }
+      a {
+        transition: opacity 0.2s;
+      }
+      a:hover {
+        opacity: 0.6;
+      }
+      #about-footer {
+        display: flex;
+        justify-content: flex-end;
+      }
+      #disclaimer-title {
+        display: inline-block;
+        margin-bottom: 5px;
+        color: var(--editorText);
+      }
+      #disclaimer {
+        display: inline-block;
+        color: var(--grayOut);
+        font-size: 12px;
+        line-height: 1;
+      }
+      #about button {
+        display: flex;
+        padding: 8px 16px;
+        background: var(--color3);
+        color: var(--editorText);
+        border: none;
+        cursor: pointer;
+        margin-top: 15px;
+      }
+      #custom-context-menu.menu,
+      #tab-context-menu.menu {
+        overflow-y: auto;
+        max-height: calc(100vh - 12.5px - 35px);
+        position: absolute;
+        background: var(--color2);
+        border: solid 1px var(--color3);
+        padding: 5px 0;
+        z-index: 9999;
+        display: none;
+        flex-direction: column;
+        width: 220px;
+        user-select: none;
+      }
+      #custom-context-menu button,
+      #tab-context-menu button {
+        position: relative;
+        background: none;
+        color: var(--editorText);
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        padding: 0 10px;
+        display: flex;
+      }
+      #custom-context-menu button:hover,
+      #tab-context-menu button:hover {
+        background: var(--color3);
+      }
+      #custom-context-menu button .label {
+        display: inline-block;
+        width: 50%;
+      }
+      #tab-context-menu button .label {
+        display: inline-block;
+        width: 70%;
+      }
+      #tab-context-menu button[data-action="openInNewWindow"] .label {
+        width: 100%;
+      }
+      #menu button .shortcut,
+      #custom-context-menu button .shortcut,
+      #tab-context-menu button .shortcut {
+        color: var(--grayOut);
+      }
+      #custom-context-menu button svg {
+        display: inline-block;
+      }
+
+      #settings-menu {
+        position: absolute;
+        background: var(--color2);
+        z-index: 9996;
+        height: calc(100vh - 35px - 25px);
+        width: 260px;
+        top: 35px;
+        right: 0px;
+        user-select: none;
+        padding: 10px 0 115px 0;
+        box-sizing: border-box;
+        display: none;
+        overflow-y: auto;
+        border-top: 1px solid var(--color3);
+        border-left: 1px solid var(--color3);
+        overflow-anchor: none;
+        scroll-behavior: auto !important;
+      }
+      #settings-menu h1 {
+        display: flex;
+        justify-content: space-between;
+        color: var(--grayOut);
+        margin: 0 0 10px 0;
+        padding: 0 20px;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      #settings-menu .reset {
+        display: none;
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        width: 17px;
+        opacity: 0.5;
+      }
+      #settings-menu h1:hover .reset {
+        display: flex;
+      }
+      #settings-menu .reset svg {
+        width: 12px;
+        height: 12px;
+      }
+      #settings-menu .reset svg path {
+        stroke-width: 2px;
+        stroke: var(--grayOut);
+      }
+      #settings-menu h1 .reset:hover {
+        opacity: 1;
+      }
+      #settings-menu .hr {
+        height: 1px;
+        background: var(--color3);
+        margin: 0px 20px 5px 20px;
+        flex-shrink: 0;
+      }
+      #settings-menu button {
+        position: relative;
+        justify-content: space-between;
+        display: flex;
+        align-items: center;
+        background: none;
+        color: var(--editorText);
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        font-size: 14px;
+        width: 100%;
+        height: 28px;
+        line-height: 28px;
+        padding: 0 20px;
+      }
+      #settings-menu button:hover {
+        background: var(--color3);
+      }
+      #settings-menu .row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 20px;
+        height: 28px;
+        line-height: 28px;
+        margin-bottom: 5px;
+        font-size: 14px;
+      }
+
+      #settings-menu button {
+        margin-bottom: 5px;
+      }
+
+      #settings-menu .label {
+        color: var(--editorText);
+        user-select: none;
+      }
+
+      #settings-menu .control {
+        display: flex;
+        align-items: center;
+      }
+      #settings-menu .select {
+        display: flex;
+        align-items: center;
+        width: 100%;
+      }
+      .size-change-btn {
+        cursor: pointer;
+        width: 25px;
+        height: 25px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 5px;
+        margin: 0;
+      }
+      .size-change-btn:hover {
+        background: var(--color3);
+      }
+      #tab-size-value,
+      #font-size-value {
+        color: var(--editorText);
+      }
+      /* #langSwitcher, */
+      #font-family-select {
+        all: unset;
+        display: block;
+        height: 28px;
+        width: 100%;
+        background: var(--color2);
+        color: var(--editorText);
+        font: inherit;
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        cursor: pointer;
+      }
+      #font-select-wrapper,
+      #lang-select-wrapper {
+        position: relative;
+        width: 100%;
+      }
+      #font-select-wrapper::after,
+      #lang-select-wrapper::after {
+        content: "";
+        position: absolute;
+        pointer-events: none;
+        top: 12px;
+        right: 0px;
+        width: 14px;
+        height: 7px;
+        background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9.77 5.65"><polyline fill="none" stroke="%23b6b9bf" stroke-miterlimit="10" points=".35 .35 4.94 4.94 9.41 .35"/></svg>')
+          no-repeat center;
+        background-size: contain;
+      }
+      .settings-info {
+        color: var(--grayOut);
+        font-size: 12px;
+        padding: 0 20px;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="container">
+      <div id="toolbar">
+        <!-- top left menu -->
+        <button id="menu-button" aria-label="Menu">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15.16 7.2" width="16" height="8">
+            <line
+              x1="0.64"
+              y1="0.5"
+              x2="14.66"
+              y2="0.5"
+              stroke="#fff"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              fill="none"
+            />
+            <line
+              x1="0.5"
+              y1="6.7"
+              x2="7.65"
+              y2="6.7"
+              stroke="#fff"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              fill="none"
+            />
+          </svg>
+        </button>
+
+        <div id="tabs-container">
+          <div id="tabs"></div>
+
+          <button id="add-tab" aria-label="Add Tab">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 11.95 11.95" width="13" height="13">
+              <line
+                x1="5.97"
+                y1="11.45"
+                x2="5.97"
+                y2=".5"
+                fill="none"
+                stroke="#fff"
+                stroke-linecap="round"
+                stroke-miterlimit="10"
+              />
+              <line
+                x1="11.45"
+                y1="5.97"
+                x2=".5"
+                y2="5.97"
+                fill="none"
+                stroke="#fff"
+                stroke-linecap="round"
+                stroke-miterlimit="10"
+              />
+            </svg>
+          </button>
+        </div>
+
+        <div id="toolbar-drag-fill"></div>
+
+        <!-- window controls -->
+        <div id="window-controls">
+          <button class="window-button" id="min-button" aria-label="Minimize">
+            <svg viewBox="0 0 12.47 1">
+              <line x1="11.97" y1=".5" x2=".5" y2=".5" stroke="#fff" stroke-linecap="round" fill="none" />
+            </svg>
+          </button>
+          <button class="window-button" id="max-button" aria-label="Maximize">
+            <svg viewBox="0 0 12.47 12.47">
+              <rect x=".5" y=".5" width="11.47" height="11.47" stroke="#fff" fill="none" />
+            </svg>
+          </button>
+          <button class="window-button" id="close-button" aria-label="Close">
+            <svg viewBox="0 0 12.47 12.47">
+              <line x1="11.97" y1=".5" x2=".5" y2="11.97" stroke="#fff" stroke-linecap="round" fill="none" />
+              <line x1=".5" y1=".5" x2="11.97" y2="11.97" stroke="#fff" stroke-linecap="round" fill="none" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- toolbar menu -->
+      <div id="menu" class="scrollable">
+        <button id="newTabBtn">
+          <span class="label">New</span>
+          <span class="shortcut">Ctrl + T</span>
+        </button>
+        <button id="newWindowBtn">
+          <span class="label">New Window</span>
+          <span class="shortcut">Ctrl + N</span>
+        </button>
+        <button id="openFileBtn">
+          <span class="label">Open</span>
+          <span class="shortcut">Ctrl + O</span>
+        </button>
+        <button id="openRecent">
+          <span class="btn-text">Open Recent</span>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 5.65 9.77"
+            width="7.8"
+            height="13"
+            style="margin-left: 6px; vertical-align: middle"
+          >
+            <polyline fill="none" stroke="#fff" stroke-miterlimit="10" points=".35 9.42 4.94 4.83 .35 .36" />
+          </svg>
+        </button>
+        <button id="saveFileBtn">
+          <span class="label">Save</span>
+          <span class="shortcut">Ctrl + S</span>
+        </button>
+        <button id="saveAsFileBtn">
+          <span class="label">Save As</span>
+          <span class="shortcut">Ctrl + Shift + S</span>
+        </button>
+        <div class="hr"></div>
+        <button id="triggerFindBtn">
+          <span class="label">Find</span>
+          <span class="shortcut">Ctrl + F</span>
+        </button>
+        <button id="triggerReplaceBtn">
+          <span class="label">Replace</span>
+          <span class="shortcut">Ctrl + H</span>
+        </button>
+        <button id="triggerGoToLineBtn">
+          <span class="label">Go to Line</span>
+          <span class="shortcut">Ctrl + G</span>
+        </button>
+        <button id="triggerGoToSymbolBtn">
+          <span class="label">Go to Heading</span>
+          <span class="shortcut">Ctrl + Shift + O</span>
+        </button>
+        <button id="triggerShowCommandsBtn">
+          <span class="label">Command List</span>
+          <span class="shortcut">F1</span>
+        </button>
+        <div class="hr"></div>
+        <!-- <button id="print-button">Print</button> -->
+        <button id="changeTheme">
+          <span class="btn-text">Themes</span>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 5.65 9.77"
+            width="7.8"
+            height="13"
+            style="margin-left: 6px; vertical-align: middle"
+          >
+            <polyline fill="none" stroke="#fff" stroke-miterlimit="10" points=".35 9.42 4.94 4.83 .35 .36" />
+          </svg>
+        </button>
+        <button id="settingsBtn">
+          <span class="label">Settings</span>
+          <span class="shortcut">Ctrl + ,</span>
+        </button>
+        <div class="hr"></div>
+        <button id="aboutBtn">About</button>
+      </div>
+      <div id="recent-menu" class="scrollable"></div>
+      <div id="theme-menu" class="scrollable">
+        <button data-theme="onyx">
+          <span>Onyx</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <button data-theme="dark">
+          <span>Dark</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <button data-theme="ash">
+          <span>Ash</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- editor -->
+      <div id="editor"></div>
+
+      <!-- status bar -->
+      <div id="status-bar" style="display: none">
+        <div id="status-left"></div>
+        <div id="status-right">
+          <span id="line-col"></span>
+          <span id="zoom-level"></span>
+          <span id="line-ending"></span>
+          <span id="encoding"></span>
+        </div>
+      </div>
+
+      <!-- messages -->
+      <div id="file-saved" class="message">Saved</div>
+      <div id="file-opened" class="message">File already opened!</div>
+      <div id="file-updated" class="message">File reloaded</div>
+      <div id="file-modified" class="message">File modified externally!</div>
+
+      <!-- editor context menu -->
+      <div id="custom-context-menu" style="display: none; position: absolute" class="menu scrollable">
+        <button data-action="cut">
+          <span class="label">Cut</span>
+          <span class="shortcut">Ctrl + X</span>
+        </button>
+        <button data-action="copy">
+          <span class="label">Copy</span>
+          <span class="shortcut">Ctrl + C</span>
+        </button>
+        <button data-action="paste">
+          <span class="label">Paste</span>
+          <span class="shortcut">Ctrl + V</span>
+        </button>
+        <button data-action="undo">
+          <span class="label">Undo</span>
+          <span class="shortcut">Ctrl + Z</span>
+        </button>
+        <button data-action="redo">
+          <span class="label">Redo</span>
+          <span class="shortcut">Ctrl + Shift + Z</span>
+        </button>
+        <button data-action="selectAll">
+          <span class="label">Select All</span>
+          <span class="shortcut">Ctrl + A</span>
+        </button>
+        <div class="hr"></div>
+        <button data-action="wordWrap" id="word-wrap">
+          <span>Word Wrap</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="display: inline-block; width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <button data-action="toggleMarkdown" id="toggle-markdown">
+          <span>Markdown Mode</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="display: none; width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+      </div>
+
+      <!-- tab context menu -->
+      <div id="tab-context-menu" style="display: none; position: absolute" class="menu scrollable">
+        <button data-action="close">
+          <span class="label">Close</span>
+          <span class="shortcut">Ctrl + W</span>
+        </button>
+        <button data-action="closeSaved">
+          <span class="label">Close Saved</span>
+        </button>
+        <button data-action="closeOthers">
+          <span class="label">Close Others</span>
+        </button>
+        <button data-action="closeToRight">
+          <span class="label">Close to the Right</span>
+        </button>
+        <div class="hr"></div>
+        <button data-action="copyPath">
+          <span class="label">Copy Path</span>
+        </button>
+        <button data-action="openPath">
+          <span class="label">Open Path</span>
+        </button>
+        <div class="hr"></div>
+        <button data-action="reopenClosedTab" class="disabled">
+          <span class="label">Reopen Closed Tab</span>
+        </button>
+        <button data-action="openInNewWindow">
+          <span class="label">Open in New Window</span>
+        </button>
+      </div>
+
+      <!-- settings -->
+      <div id="settings-menu" class="scrollable">
+        <!-- Editor Layout -->
+        <h1 id="settingsLayout">
+          <span class="h1">Editor</span>
+          <span class="reset" title="Reset Settings">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 17 17">
+              <path
+                fill="none"
+                stroke="#fff"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M16.43,9.54c-.57,4.38-4.59,7.47-8.97,6.89C3.08,15.86,0,11.84.57,7.46.99,4.22,3.34,1.57,6.51.76c3.9-1,7.94,1.01,9.43,4.75"
+              />
+              <path fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" d="M16.5.5v5h-5" />
+            </svg>
+          </span>
+        </h1>
+        <div class="hr"></div>
+        <button id="line-highlight">
+          <span>Line Highlight</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <button id="line-num">
+          <span>Line Numbers</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <button id="toggleFolding">
+          <span>Folding</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <button id="minimap">
+          <span>Minimap</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <button id="toggleSyntaxHighlight">
+          <span>Syntax Highlighting</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <button id="toggleStatusBar">
+          <span>Status Bar</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="display: none; width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <div class="row">
+          <div class="label tabSize">Tab Size</div>
+          <div class="control">
+            <div id="tab-size-decrease" class="size-change-btn">
+              <svg viewBox="0 0 12.47 1" style="vertical-align: middle; width: 11px; height: 11px">
+                <line x1="11.97" y1=".5" x2=".5" y2=".5" stroke="#fff" stroke-linecap="round" fill="none" />
+              </svg>
+            </div>
+            <span
+              id="tab-size-value"
+              style="user-select: none; min-width: 25px; display: inline-block; text-align: center"
+            ></span>
+            <div id="tab-size-increase" class="size-change-btn">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 11.95 11.95"
+                style="vertical-align: middle; width: 11px; height: 11px"
+              >
+                <line
+                  x1="5.97"
+                  y1="11.45"
+                  x2="5.97"
+                  y2=".5"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-linecap="round"
+                  stroke-miterlimit="10"
+                />
+                <line
+                  x1="11.45"
+                  y1="5.97"
+                  x2=".5"
+                  y2="5.97"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-linecap="round"
+                  stroke-miterlimit="10"
+                />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- Font -->
+        <h1 style="margin-top: 50px" class="font">
+          <span class="h1">Font</span>
+          <span class="reset" title="Reset Settings">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 17 17">
+              <path
+                fill="none"
+                stroke="#fff"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M16.43,9.54c-.57,4.38-4.59,7.47-8.97,6.89C3.08,15.86,0,11.84.57,7.46.99,4.22,3.34,1.57,6.51.76c3.9-1,7.94,1.01,9.43,4.75"
+              />
+              <path fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" d="M16.5.5v5h-5" />
+            </svg>
+          </span>
+        </h1>
+        <div class="hr"></div>
+        <div class="row select-row font-select-row">
+          <select id="font-family-select" class="scrollable"></select>
+        </div>
+
+        <div class="row">
+          <div class="label size">Size</div>
+          <div class="control">
+            <div id="font-size-decrease" class="size-change-btn">
+              <svg viewBox="0 0 12.47 1" style="vertical-align: middle; width: 11px; height: 11px">
+                <line x1="11.97" y1=".5" x2=".5" y2=".5" stroke="#fff" stroke-linecap="round" fill="none" />
+              </svg>
+            </div>
+            <span
+              id="font-size-value"
+              style="user-select: none; min-width: 25px; display: inline-block; text-align: center"
+            ></span>
+            <div id="font-size-increase" class="size-change-btn">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 11.95 11.95"
+                style="vertical-align: middle; width: 11px; height: 11px"
+              >
+                <line
+                  x1="5.97"
+                  y1="11.45"
+                  x2="5.97"
+                  y2=".5"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-linecap="round"
+                  stroke-miterlimit="10"
+                />
+                <line
+                  x1="11.45"
+                  y1="5.97"
+                  x2=".5"
+                  y2="5.97"
+                  fill="none"
+                  stroke="#fff"
+                  stroke-linecap="round"
+                  stroke-miterlimit="10"
+                />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <p id="fontDescription" class="settings-info">
+          Word wrap may misalign with proportional fonts. Use a monospaced font if needed.
+        </p>
+
+        <!-- Custom Theme -->
+        <h1 style="margin: 50px 0 10px 0" id="settingsCustomTheme">Custom Theme</h1>
+        <div class="hr"></div>
+        <button id="openThemeFolder">Open Theme Folder</button>
+
+        <p id="customThemeDescription" class="settings-info">
+          Create a CSS file in this folder to add and apply custom themes from the theme menu. Details
+          <a href="https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md" target="_blank">here</a>.
+        </p>
+
+        <!-- language -->
+        <h1 style="margin: 50px 0 10px 0" id="settingsLanguage">Language</h1>
+        <div class="hr"></div>
+        <div class="row select-row lang-select-row">
+          <select id="langSwitcher">
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="zh">中文</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </div>
+
+        <p id="langDescription" class="settings-info">
+          Contribute translations
+          <a href="https://github.com/sheetau/monapad/blob/main/LANGUAGE.md" target="_blank">here</a>.
+        </p>
+
+        <!-- file importing -->
+        <input type="file" id="fileInput" style="display: none" />
+      </div>
+
+      <!-- modal -->
+      <div id="confirm-save-background">
+        <!-- confirm save tab close -->
+        <div id="confirm-save">
+          <p></p>
+          <div class="confirm-buttons">
+            <button id="confirm-save-yes">Save</button>
+            <button id="confirm-save-no">Don't Save</button>
+            <button id="confirm-save-cancel">Cancel</button>
+          </div>
+        </div>
+        <!-- confirm save window close -->
+        <div id="confirm-save-window">
+          <p>Do you want to save the changes?</p>
+          <div class="confirm-buttons">
+            <button id="confirm-save-all">Save All & Exit</button>
+            <button id="confirm-discard-all">Discard & Exit</button>
+            <button id="confirm-cancel-all">Cancel</button>
+          </div>
+        </div>
+        <!-- about -->
+        <div id="about">
+          <div id="about-main" class="scrollable">
+            <div style="display: flex; align-items: center; gap: 1rem">
+              <img src="icon/favicon.ico" alt="App Icon" width="48" height="48" />
+              <div>
+                <div style="font-size: 20px; margin-bottom: 5px">Monapad</div>
+                <div id="version-text"></div>
+              </div>
+            </div>
+            <p style="margin-top: 12px" id="version-detail-text"></p>
+            <p>
+              <span id="creator">Creator</span>: <a href="https://linktr.ee/sheetau" target="_blank">Sheeta</a><br />
+              <span id="website">Website</span>:
+              <a href="https://sheetau.github.io/monapad/" target="_blank">https://sheetau.github.io/monapad/</a><br />
+              GitHub: <a href="https://github.com/sheetau/monapad" target="_blank">https://github.com/sheetau/monapad</a
+              ><br />
+              <span id="discordServer">Server</span>:
+              <a href="https://discord.gg/2dXs5HwXuW" target="_blank">https://discord.gg/2dXs5HwXuW</a>
+            </p>
+            <p style="margin-bottom: 0">
+              <span id="disclaimer-title">Disclaimer</span>:<br />
+              <span id="disclaimer">
+                THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+                LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+                NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+                WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+                SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.<br /><br />
+                Copyright © 2025 Sheeta.
+              </span>
+            </p>
+          </div>
+          <div id="about-footer">
+            <button id="about-close">OK</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- drag file modal -->
+      <div id="file-drop-background">
+        <!-- file drop -->
+        <div id="file-drop">
+          <img src="icon/filedrop.png" />
+          <p>Open with Monapad</p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var global = global || window;
+    </script>
+    <script src="./build/bundle.js"></script>
+  </body>
+</html>
