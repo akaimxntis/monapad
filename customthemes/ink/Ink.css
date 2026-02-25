@@ -1,0 +1,163 @@
+/* use shift + ctrl + i to inspect */
+/* use ctrl + r to reload the app for the new theme file to be recognized */
+/* any changes to the theme file will be applied by saving the file */
+:root {
+  /* base theme color, !important required since fallback value is specified in js */
+  --color1: #0d0d0d !important; /* tab, modal background */
+  --color2: #121212 !important; /* toolbar, statusbar, menu, message background */
+  --color3: #1c1c1c !important; /* button hover, modal button */
+
+  --editorText: #bababa; /* text color */
+  --grayOut: #616161; /* grayed out text and element color */
+  --btnHover: #3b414d; /* modal button hover */
+  --highlight: #fafafa; /* accent color, link color */
+  --btnHighlight: var(--highlight); /* modal highlight button */
+  --warn: #cf5d6e; /* deleted file title */
+  --windowClose: var(--highlight); /* window close */
+
+  /* text, syntax highlight color */
+  /* style: bold italic underline (set with space if multiple) */
+  --heading1: #fafafa; /* heading 1 */
+  --heading1Style: bold;
+
+  --heading2: #fafafa; /* heading 2 */
+  --heading2Style: ;
+
+  --heading3: var(--editorText); /* heading 3 */
+  --heading3Style: ;
+
+  --bulletPoint: #fafafa; /* bullet point */
+  --bulletPointStyle: ;
+
+  --numberList: #fafafa; /* bullet point */
+  --numberListStyle: ;
+
+  --subText: var(--grayOut); /* sub text */
+  --subTextStyle: ;
+
+  --blockQuote: var(--editorText); /* block quote */
+  --blockQuoteStyle: italic;
+
+  --inlineCode: var(--warn); /* inline code */
+  --inlineCodeStyle: ;
+
+  --codeBlockFence: #3b414d; /* code block fence */
+  --codeBlockFenceStyle: ;
+
+  --codeBlock: #63829b; /* code block */
+  --codeBlockStyle: ;
+
+  /* monaco editor color */
+  --vscode-editor-background: var(--color1);
+  --vscode-editor-foreground: var(--editorText);
+  --vscode-errorForeground: var(--warn);
+  --vscode-inputValidation-errorBorder: var(--warn);
+  --vscode-editor-lineHighlightBackground: var(--color2);
+  --vscode-editor-lineHighlightBorder: #00000000;
+  --vscode-editor-wordHighlightBackground: #00000000;
+  --vscode-editorWidget-background: var(--color2);
+  --vscode-editorHoverWidget-background: var(--color2);
+  --vscode-input-background: var(--color1);
+  --vscode-list-activeSelectionBackground: var(--color3);
+  --vscode-list-dropBackground: var(--color3);
+  --vscode-menu-selectionBackground: var(--color3);
+  --vscode-list-hoverBackground: var(--color3);
+  --vscode-editorStickyScrollHover-background: var(--color3);
+  --vscode-button-hoverBackground: var(--color3);
+  --vscode-badge-background: var(--color3);
+  --vscode-editorWidget-border: var(--color3);
+  --vscode-editorHoverWidget-border: var(--color3);
+  --vscode-editorGutter-foldingControlForeground: var(--grayOut);
+  --vscode-editorLineNumber-foreground: #61616180;
+  --vscode-editorLineNumber-activeForeground: var(--grayOut);
+  --vscode-editor-selectionBackground: #fafafa22;
+
+  --vscode-editor-findMatchBackground: #29415a; /* current match position */
+  --vscode-editor-findMatchHighlightBackground: #4a607254; /* all matches */
+  --vscode-editor-inactiveSelectionBackground: #55c9ff1f; /* no match, selected match */
+  --vscode-searchEditor-findMatchBackground: #29415a38;
+  --vscode-editorOverviewRuler-findMatchForeground: #29415a7d; /* all matches in scrollbar */
+  --vscode-minimap-findMatchHighlight: #29415a; /* all matches in minimap */
+
+  /* navigation widget */
+  --vscode-pickerGroup-foreground: var(--grayOut); /* symbols() text */
+  --vscode-quickInputList-focusBackground: var(--color3); /* focus background */
+  --vscode-symbolIcon-classForeground: var(--highlight); /* icon */
+  --vscode-symbolIcon-functionForeground: #fafafa; /* icon */
+  --vscode-symbolIcon-methodForeground: var(--editorText); /* icon */
+  --vscode-quickInputList-focusIconForeground: var(--editorText); /* focus icon */
+  --vscode-quickInput-foreground: var(--grayOut); /* text */
+  --vscode-quickInputList-focusForeground: var(--editorText); /* forcus text */
+}
+
+#editor {
+  border-top: none;
+}
+.tab.active {
+  height: 34px;
+  border: 1px solid #00000000;
+  border-bottom: 1px solid var(--highlight);
+}
+#toolbar::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  background: var(--color3);
+  z-index: 1;
+}
+#status-bar,
+#settings-menu {
+  border: none;
+}
+.tab:not(.active):not(.prev-active)::before {
+  display: none;
+}
+.tab:first-of-type:not(.active)::after {
+  display: none;
+}
+
+/* monaco editor */
+.monaco-inputbox > .ibwrapper > .input {
+  width: 100% !important;
+}
+/* markdown bracket highlighting color */
+.monaco-editor .bracket-highlighting-0,
+.monaco-editor .bracket-highlighting-1,
+.monaco-editor .bracket-highlighting-2 {
+  color: #ce9178 !important;
+}
+
+/* modal */
+#confirm-save p,
+#confirm-save-window p {
+  color: var(--grayOut);
+}
+#confirm-save-window .confirm-buttons #confirm-save-all:hover,
+#confirm-save .confirm-buttons #confirm-save-yes:hover {
+  background: color-mix(in srgb, var(--highlight) 75%, transparent);
+}
+#confirm-save-all,
+#confirm-save-yes {
+  color: var(--color1) !important;
+}
+#file-drop {
+  background: var(--highlight);
+  color: color-mix(in srgb, var(--color1) 75%, transparent);
+  outline: 2px dashed color-mix(in srgb, var(--color1) 50%, transparent);
+}
+
+/* window close button */
+#close-button:hover line {
+  stroke: var(--color2) !important;
+}
+
+/* dropdown menu svg */
+#font-select-wrapper::after,
+#lang-select-wrapper::after {
+  /* add 6 digit hex after %23 to change color */
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9.77 5.65"><polyline fill="none" stroke="%23fafafa" stroke-miterlimit="10" points=".35 .35 4.94 4.94 9.41 .35"/></svg>')
+    no-repeat center;
+}

@@ -63,6 +63,7 @@ Download [latest version](https://github.com/sheetau/monapad/releases/latest) of
 ## Custom Themes:
 
 - [Ayu Theme](https://github.com/sheetau/monapad/tree/main/customthemes/ayu/README.md) [[sheeta](https://github.com/sheetau)]
+- [Ink Theme](https://github.com/sheetau/monapad/tree/main/customthemes/ink/README.md) [[sheeta](https://github.com/sheetau)]
 
 To use custom themes, download CSS file from the above list or from [official repository](https://github.com/sheetau/monapad/tree/main/customthemes) and place it to themes folder that can be opened from the settings in the app.
 
