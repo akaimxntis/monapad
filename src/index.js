@@ -138,9 +138,8 @@ window.electronAPI.onAssignWindowId((id) => {
 // app version
 window.electronAPI.getAppVersion().then((versions) => {
   document.querySelector("#version-text").textContent = `v${versions.app}`;
-  document.querySelector(
-    "#version-detail-text"
-  ).innerHTML = `Electron: ${versions.electron}<br>Chromium: ${versions.chrome}<br>Node.js: ${versions.node}<br>V8: ${versions.v8}`;
+  document.querySelector("#version-detail-text").innerHTML =
+    `Electron: ${versions.electron}<br>Chromium: ${versions.chrome}<br>Node.js: ${versions.node}<br>V8: ${versions.v8}`;
 });
 
 // file open on launch
@@ -211,6 +210,7 @@ i18next
       en: { translation: require("./locales/en-US.json") },
       ja: { translation: require("./locales/ja-JP.json") },
       zh: { translation: require("./locales/zh-CN.json") },
+      de: { translation: require("./locales/de-DE.json") },
     },
   })
   .then(() => {
@@ -603,7 +603,7 @@ function createCustomTheme() {
       makeRule("block-quote", "blockQuote"),
       makeRule("inline-code", "inlineCode"),
       makeRule("code-block-fence", "codeBlockFence"),
-      makeRule("code-block-content", "codeBlock")
+      makeRule("code-block-content", "codeBlock"),
     );
   }
 
@@ -704,7 +704,7 @@ monacoEditor.addAction({
 
           return edits;
         })
-        .flat()
+        .flat(),
     );
     ed.pushUndoStop();
   },
@@ -759,7 +759,7 @@ function createToggleHeadingAction(level) {
 
             return edits;
           })
-          .flat()
+          .flat(),
       );
       ed.pushUndoStop();
     },
@@ -1054,7 +1054,7 @@ window.electronAPI.getFonts().then((fonts) => {
     }),
     "value",
     "label",
-    true
+    true,
   );
 
   fontChoices.setChoiceByValue(selectedFontFamily);
@@ -3314,7 +3314,7 @@ customContextMenu.addEventListener("click", async (e) => {
               range: sel,
               text: "",
               forceMoveMarkers: true,
-            }))
+            })),
           );
         }
       } catch (err) {

@@ -34,6 +34,7 @@ function createWindow() {
     minHeight: 210,
     backgroundColor: "#000000",
     frame: false,
+    // transparent: true,
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -107,6 +108,7 @@ function createNewWindow(parentWindow, position) {
     minHeight: 210,
     backgroundColor: "#000000",
     frame: false,
+    // transparent: true,
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -262,7 +264,7 @@ ipcMain.handle("window:getIdAt", (_, point) => {
       w.getBounds().x <= point.x &&
       w.getBounds().x + w.getBounds().width >= point.x &&
       w.getBounds().y <= point.y &&
-      w.getBounds().y + w.getBounds().height >= point.y
+      w.getBounds().y + w.getBounds().height >= point.y,
   );
   return win?.id || null;
 });

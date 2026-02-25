@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -164,11 +164,27 @@
 
       body {
         margin: 0;
-        font-family: "figtree", Yu Gothic UI, Meiryo, Hiragino Sans, sans-serif;
+        font-family:
+          "figtree",
+          Yu Gothic UI,
+          Meiryo,
+          Hiragino Sans,
+          sans-serif;
         background: var(--color1);
         color: var(--editorText);
         overflow: hidden;
       }
+
+      /* body::after {
+        content: "";
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        pointer-events: none;
+        box-shadow: inset 0 0 0 1px var(--grayOut);
+      } */
 
       /* monaco editor style */
       /* markdown bracket highlighting color */
@@ -835,7 +851,9 @@
         z-index: 9997;
         opacity: 0;
         pointer-events: none;
-        transition: opacity 0.3s ease, transform 0.3s ease;
+        transition:
+          opacity 0.3s ease,
+          transform 0.3s ease;
       }
       .message.show {
         opacity: 1;
@@ -1060,7 +1078,7 @@
         top: 35px;
         right: 0px;
         user-select: none;
-        padding: 10px 0 90px 0;
+        padding: 10px 0 115px 0;
         box-sizing: border-box;
         display: none;
         overflow-y: auto;
@@ -1754,6 +1772,7 @@
             <option value="en">English</option>
             <option value="ja">日本語</option>
             <option value="zh">中文</option>
+            <option value="de">Deutsch</option>
           </select>
         </div>
 
