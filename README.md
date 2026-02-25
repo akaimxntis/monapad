@@ -101,6 +101,7 @@ Feel free to review the source code since it is 100% open sourced.
 
 - Localization Contributors:
   - [zh-CN][Chinese]: [kazepu](https://github.com/kazepu)
+  - [de-DE][German]: [Undertaker-afk](https://github.com/Undertaker-afk)
 
 ## Stay tuned:
 
