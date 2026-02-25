@@ -1,0 +1,93 @@
+{
+  "file": {
+    "untitled": "Unbenannt"
+  },
+  "statusBar": {
+    "line": "Ze",
+    "col": "Sp",
+    "selection": "({{count}} ausgewählt)",
+    "encodingTooltip": "Dieser Editor unterstützt nur UTF-8.\nWenn du andere Kodierungen verwenden möchtest, konvertiere sie bitte vor dem Öffnen in UTF-8."
+  },
+  "menu": {
+    "new": "Neu",
+    "newWindow": "Neues Fenster",
+    "open": "Öffnen",
+    "openRecent": "Zuletzt geöffnet",
+    "clearHistory": "Verlauf löschen",
+    "save": "Speichern",
+    "saveAs": "Speichern unter",
+    "find": "Suchen",
+    "replace": "Ersetzen",
+    "goToLine": "Gehe zu Zeile",
+    "goToSymbol": "Gehe zu Überschrift",
+    "showCommands": "Befehlsliste",
+    "print": "Drucken",
+    "settings": "Einstellungen",
+    "theme": "Designs",
+    "about": "Über",
+    "onyx": "Onyx",
+    "dark": "Dunkel",
+    "ash": "Asche"
+  },
+  "message": {
+    "saved": "Gespeichert",
+    "fileAlreadyOpened": "Datei ist bereits offen!",
+    "fileUpdated": "Datei neu geladen",
+    "fileModified": "Datei wurde extern geändert!",
+    "ReloadButtonTooltip": "Datei neu laden"
+  },
+  "editorMenu": {
+    "cut": "Ausschneiden",
+    "copy": "Kopieren",
+    "paste": "Einfügen",
+    "undo": "Rückgängig",
+    "redo": "Wiederholen",
+    "selectAll": "Alles auswählen",
+    "wordWrap": "Zeilenumbruch",
+    "markdownMode": "Markdown-Modus"
+  },
+  "tabMenu": {
+    "close": "Schließen",
+    "closeOthers": "Andere schließen",
+    "closeToRight": "Rechte schließen",
+    "closeSaved": "Gespeicherte schließen",
+    "copyPath": "Pfad kopieren",
+    "openPath": "Pfad öffnen",
+    "reopenClosedTab": "Geschlossenen Tab wieder öffnen",
+    "openInNewWindow": "In neuem Fenster öffnen"
+  },
+  "settings": {
+    "font": "Schriftart",
+    "size": "Größe",
+    "fontDescription": "Zeilenumbruch kann bei proportionalen Schriftarten zu Fehlausrichtung führen. Verwende bei Bedarf eine nichtproportionale (monospace) Schriftart.",
+    "layout": "Editor",
+    "highlightLine": "Aktuelle Zeile hervorheben",
+    "lineNumbers": "Zeilennummern",
+    "folding": "Code-Faltung",
+    "displayMinimap": "Minimap",
+    "syntaxHighlight": "Syntaxhervorhebung",
+    "statusBar": "Statusleiste",
+    "tabSize": "Tabulatorgröße",
+    "language": "Sprache",
+    "langDescription": "Übersetzungen beitragen <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">hier</a>.",
+    "customTheme": "Eigenes Design",
+    "openThemeFolder": "Design-Ordner öffnen",
+    "customThemeDescription": "Erstelle in diesem Ordner eine CSS-Datei, um eigene Designs hinzuzufügen und sie über das Design-Menü anzuwenden. Details <a href=\"https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md\" target=\"_blank\">hier</a>.",
+    "resetTooltip": "Einstellungen zurücksetzen"
+  },
+  "modal": {
+    "fileDrop": "Mit Monapad öffnen",
+    "saveChanges": "Änderungen an \"{{name}}\" speichern?",
+    "confirmSave": "Speichern",
+    "dontSave": "Nicht speichern",
+    "cancel": "Abbrechen",
+    "confirmSaveWindow": "Möchtest du die Änderungen speichern?",
+    "saveAll": "Alles speichern & beenden",
+    "discardAll": "Alles verwerfen & beenden",
+    "description": "Kostenloser Open-Source-Texteditor, der denselben Monaco Editor wie Visual Studio Code verwendet, erstellt von Sheeta.",
+    "discordServer": "Discord-Server",
+    "website": "Webseite",
+    "creator": "Ersteller",
+    "disclaimer": "Haftungsausschluss"
+  }
+}
