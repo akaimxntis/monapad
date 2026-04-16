@@ -24,6 +24,7 @@ With the same core editor used in VSCode and its own language designed for text 
   - Lines wrapped in triple backticks ``` is lightly highlighted as a code block.
 - Supports [Custome CSS and Themes](https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md)
 - Syntax highlighting for Markdown.
+- Advanced Japanese word segmentation support using Kuromoji.
 
 Standard text editors can become hard to read and navigate when handling large documents. Monapad was created to solve this by offering lightweight highlighting features and heading level folding through its own language designed for text editing, without fully relying on Markdown formatting. It also allows users to use familiar VSCode-style shortcuts and editing features.
 
@@ -97,6 +98,7 @@ Feel free to review the source code since it is 100% open sourced.
 - [i18next](https://github.com/i18next/i18next)
 - [font-list](https://github.com/oldj/node-font-list)
 - [Choices.js](https://github.com/Choices-js/Choices)
+- [Kuromoji.js](https://github.com/takuyaa/kuromoji.js/)
 
 ## Special Thanks:
 
