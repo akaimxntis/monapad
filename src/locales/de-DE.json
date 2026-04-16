@@ -67,6 +67,8 @@
     "displayMinimap": "Minimap",
     "syntaxHighlight": "Syntaxhervorhebung",
     "statusBar": "Statusleiste",
+    "kuromoji": "Kuromoji",
+    "kuromojiTooltip": "Erweiterte japanische Wortsegmentierung mit Kuromoji.js",
     "tabSize": "Tabulatorgröße",
     "language": "Sprache",
     "langDescription": "Übersetzungen beitragen <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">hier</a>.",

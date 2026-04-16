@@ -67,6 +67,8 @@
     "displayMinimap": "缩略图",
     "syntaxHighlight": "语法高亮",
     "statusBar": "状态栏",
+    "kuromoji": "Kuromoji",
+    "kuromojiTooltip": "使用 Kuromoji.js 进行高级日语分词",
     "tabSize": "制表符大小",
     "language": "语言",
     "langDescription": "您可以 <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">前往此处</a> 贡献翻译。",

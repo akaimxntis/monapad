@@ -6,15 +6,20 @@ const fs = require("fs");
 const Store = require("electron-store").default;
 const log = require("electron-log");
 const logDir = path.dirname(log.transports.file.getFile().path);
+const kuromoji = require("kuromoji");
 
 const store = new Store();
 const watchers = new Map();
+const watchTimeouts = new Map();
+const watchEvents = new Map();
 const watchedCssFiles = new Map();
 const gotTheLock = app.requestSingleInstanceLock();
 
 let mainWindow = null;
 let filePathToOpen = null;
 let cursorWindow = null;
+let kuromojiTokenizer = null;
+let kuromojiInitPromise = null;
 
 fs.readdirSync(logDir).forEach((file) => {
   if (file.startsWith("main.log.old")) {
@@ -378,35 +383,63 @@ ipcMain.handle("file:exists", async (event, filePath) => {
 
 ipcMain.handle("file:watch", (event, filePath) => {
   if (watchers.has(filePath)) return;
+
   try {
-    const watcher = fs.watch(filePath, async (eventType) => {
-      if (eventType === "rename") {
-        // for app that deletes original file and use temporary file to apply change
-        setTimeout(() => {
-          fs.promises
-            .access(filePath, fs.constants.F_OK)
-            .then(() => {
-              BrowserWindow.getAllWindows().forEach((win) => {
-                win.webContents.send("file:changed", { filePath, eventType: "change" });
-              });
-            })
-            .catch(() => {
-              BrowserWindow.getAllWindows().forEach((win) => {
-                win.webContents.send("file:changed", { filePath, eventType: "rename" });
-              });
-            });
-        }, 100);
-      } else {
-        BrowserWindow.getAllWindows().forEach((win) => {
-          win.webContents.send("file:changed", { filePath, eventType });
-        });
+    const watcher = fs.watch(filePath, (eventType) => {
+      const prev = watchEvents.get(filePath);
+
+      // Merge event types (rename has priority)
+      const mergedType = eventType === "rename" || prev === "rename" ? "rename" : "change";
+
+      watchEvents.set(filePath, mergedType);
+
+      if (watchTimeouts.has(filePath)) {
+        clearTimeout(watchTimeouts.get(filePath));
       }
+
+      const timeout = setTimeout(async () => {
+        watchTimeouts.delete(filePath);
+
+        const finalType = watchEvents.get(filePath);
+        watchEvents.delete(filePath);
+
+        if (finalType === "rename") {
+          try {
+            await fs.promises.access(filePath, fs.constants.F_OK);
+            sendToAllWindows("file:changed", {
+              filePath,
+              eventType: "change",
+            });
+          } catch {
+            sendToAllWindows("file:changed", {
+              filePath,
+              eventType: "rename",
+            });
+          }
+        } else {
+          sendToAllWindows("file:changed", {
+            filePath,
+            eventType: "change",
+          });
+        }
+      }, 200);
+
+      watchTimeouts.set(filePath, timeout);
     });
+
     watchers.set(filePath, watcher);
   } catch (err) {
     log.error("watch error:", err);
   }
 });
+
+function sendToAllWindows(channel, data) {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, data);
+    }
+  });
+}
 
 ipcMain.handle("file:unwatch", (event, filePath) => {
   const watcher = watchers.get(filePath);
@@ -414,6 +447,16 @@ ipcMain.handle("file:unwatch", (event, filePath) => {
     watcher.close();
     watchers.delete(filePath);
   }
+
+  // clear pending debounce timeout
+  const timeout = watchTimeouts.get(filePath);
+  if (timeout) {
+    clearTimeout(timeout);
+    watchTimeouts.delete(filePath);
+  }
+
+  // clear merged event state
+  watchEvents.delete(filePath);
 });
 
 ipcMain.handle("open-path", async (event, path) => {
@@ -439,6 +482,36 @@ ipcMain.handle("get-fonts", async () => {
   } catch (err) {
     return [];
   }
+});
+
+// kuromoji tokenizer
+function getKuromojiTokenizer() {
+  if (kuromojiTokenizer) return Promise.resolve(kuromojiTokenizer);
+  if (kuromojiInitPromise) return kuromojiInitPromise;
+
+  kuromojiInitPromise = new Promise((resolve) => {
+    const dicPath = app.isPackaged
+      ? path.join(process.resourcesPath, "kuromoji/dict")
+      : path.join(__dirname, "../node_modules/kuromoji/dict");
+    kuromoji.builder({ dicPath }).build((err, tokenizer) => {
+      if (err) {
+        log.error("kuromoji init failed:", err);
+        kuromojiInitPromise = null;
+        resolve(null);
+      } else {
+        kuromojiTokenizer = tokenizer;
+        log.info("kuromoji ready");
+        resolve(tokenizer);
+      }
+    });
+  });
+  return kuromojiInitPromise;
+}
+
+ipcMain.handle("kuromoji:tokenize", async (_, text) => {
+  const tokenizer = await getKuromojiTokenizer();
+  if (!tokenizer) return null;
+  return tokenizer.tokenize(text).map((t) => t.surface_form);
 });
 
 // window controls

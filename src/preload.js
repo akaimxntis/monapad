@@ -56,6 +56,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // font
   getFonts: () => ipcRenderer.invoke("get-fonts"),
+  // kuromoji
+  tokenize: (text) => ipcRenderer.invoke("kuromoji:tokenize", text),
 
   // open file on launch
   onOpenFile: (cb) => ipcRenderer.on("open-file", (_, path) => cb(path)),

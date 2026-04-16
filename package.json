@@ -1,6 +1,6 @@
 {
   "name": "monapad",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "description": "notepad app",
   "main": "src/main.js",
   "build": {
@@ -26,6 +26,12 @@
         "provider": "github",
         "owner": "sheetau",
         "repo": "monapad"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/kuromoji/dict",
+        "to": "kuromoji/dict"
       }
     ],
     "nsis": {
@@ -254,6 +260,7 @@
     "global": "^4.4.0",
     "i18next": "^25.2.1",
     "i18next-fs-backend": "^2.6.0",
+    "kuromoji": "^0.1.2",
     "monaco-editor": "^0.55.1",
     "vscode": "npm:@codingame/monaco-vscode-editor-api@^18.2.0"
   }

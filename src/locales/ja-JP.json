@@ -67,6 +67,8 @@
     "displayMinimap": "ミニマップ",
     "syntaxHighlight": "シンタックスハイライト",
     "statusBar": "ステータスバー",
+    "kuromoji": "Kuromoji",
+    "kuromojiTooltip": "Kuromoji.js を使用した高度な日本語分節化",
     "tabSize": "インデント幅",
     "language": "言語",
     "langDescription": "翻訳の貢献は<a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">こちら</a>。",

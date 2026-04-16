@@ -234,17 +234,15 @@
         transition: none !important;
       }
       /* tooltip */
-      .workbench-hover-container {
-        /* display: none !important; */
-      }
+      /* .workbench-hover-container {
+        display: none !important;
+      } */
       .monaco-hover.workbench-hover {
         bottom: -33px !important;
-        left: 19px !important;
       }
       /* tooltip arrow */
       .workbench-hover-pointer {
         margin-bottom: -33px !important;
-        margin-left: 19px !important;
       }
 
       line,
@@ -929,6 +927,7 @@
         font-size: 16px;
         line-height: 1.5;
         display: -webkit-box;
+        line-clamp: 3;
         -webkit-line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
@@ -950,6 +949,9 @@
         gap: 10px;
       }
 
+      .modal-underline {
+        text-decoration: underline;
+      }
       #confirm-save .confirm-buttons button,
       #confirm-save-window .confirm-buttons button {
         display: flex;
@@ -1634,6 +1636,20 @@
         </button>
         <button id="toggleStatusBar">
           <span>Status Bar</span>
+          <svg
+            class="checkmark"
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 10.23 7.15"
+            style="display: none; width: 13px; height: 13px; stroke: #fff; fill: none"
+          >
+            <polyline
+              points=".5 3.58 3.58 6.65 9.73 .5"
+              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
+            />
+          </svg>
+        </button>
+        <button id="toggleKuromoji" title="Advanced Japanese word segmentation using Kuromoji.js">
+          <span>Japanese Morphological Analysis</span>
           <svg
             class="checkmark"
             xmlns="http://www.w3.org/2000/svg"

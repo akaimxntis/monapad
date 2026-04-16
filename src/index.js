@@ -101,6 +101,7 @@ const defaultSettings = {
   syntaxHighlight: true,
   folding: true,
   statusBarVisible: true,
+  kuromojiEnabled: false,
 };
 const settings = JSON.parse(localStorage.getItem("editorSettings")) || defaultSettings;
 let selectedFontFamily = localStorage.getItem("selectedFontFamily") || "Iosevka";
@@ -275,6 +276,8 @@ function updateMenuLabels() {
   document.getElementById("fontDescription").innerHTML = i18next.t("settings.fontDescription");
   document.querySelector("#settingsLayout .h1").textContent = i18next.t("settings.layout");
   document.querySelector("#toggleStatusBar span").textContent = i18next.t("settings.statusBar");
+  document.querySelector("#toggleKuromoji span").textContent = i18next.t("settings.kuromoji");
+  document.querySelector("#toggleKuromoji").title = i18next.t("settings.kuromojiTooltip");
   document.querySelector("#line-highlight span").textContent = i18next.t("settings.highlightLine");
   document.querySelector("#line-num span").textContent = i18next.t("settings.lineNumbers");
   document.querySelector("#minimap span").textContent = i18next.t("settings.displayMinimap");
@@ -291,13 +294,13 @@ function updateMenuLabels() {
 
   // modal
   document.querySelector("#file-drop p").textContent = i18next.t("modal.fileDrop");
-  document.getElementById("confirm-save-yes").textContent = i18next.t("modal.confirmSave");
-  document.getElementById("confirm-save-no").textContent = i18next.t("modal.dontSave");
-  document.getElementById("confirm-save-cancel").textContent = i18next.t("modal.cancel");
+  document.getElementById("confirm-save-yes").innerHTML = i18next.t("modal.confirmSave");
+  document.getElementById("confirm-save-no").innerHTML = i18next.t("modal.dontSave");
+  document.getElementById("confirm-save-cancel").innerHTML = i18next.t("modal.cancel");
   document.querySelector("#confirm-save-window p").textContent = i18next.t("modal.confirmSaveWindow");
-  document.getElementById("confirm-save-all").textContent = i18next.t("modal.saveAll");
-  document.getElementById("confirm-discard-all").textContent = i18next.t("modal.discardAll");
-  document.getElementById("confirm-cancel-all").textContent = i18next.t("modal.cancel");
+  document.getElementById("confirm-save-all").innerHTML = i18next.t("modal.saveAll");
+  document.getElementById("confirm-discard-all").innerHTML = i18next.t("modal.discardAll");
+  document.getElementById("confirm-cancel-all").innerHTML = i18next.t("modal.cancel");
   // document.getElementById("description").textContent = i18next.t("modal.description");
   document.getElementById("discordServer").textContent = i18next.t("modal.discordServer");
   document.getElementById("website").textContent = i18next.t("modal.website");
@@ -663,6 +666,278 @@ monacoEditor = monaco.editor.create(editor, {
   copyWithSyntaxHighlighting: false,
   cursorSmoothCaretAnimation: false,
 });
+
+// Japanese word handling
+let setKuromojiEnabled = () => {};
+
+(function setupJapaneseWordHandling() {
+  // fallback based on character category
+  function getCharCategory(ch) {
+    if (!ch) return null;
+    const cp = ch.codePointAt(0);
+    if ((cp >= 0x30 && cp <= 0x39) || (cp >= 0x41 && cp <= 0x5a) || (cp >= 0x61 && cp <= 0x7a)) return "ascii_alnum";
+    if (cp === 0x20 || cp === 0x09) return "space";
+    if (cp >= 0x21 && cp <= 0x7e) return "ascii_symbol_" + cp;
+    if (cp >= 0x3041 && cp <= 0x309f) return "hiragana";
+    if ((cp >= 0x30a0 && cp <= 0x30ff) || cp === 0xff70 || (cp >= 0xff65 && cp <= 0xff9f)) return "katakana";
+    if (
+      (cp >= 0x4e00 && cp <= 0x9fff) ||
+      (cp >= 0x3400 && cp <= 0x4dbf) ||
+      (cp >= 0xf900 && cp <= 0xfaff) ||
+      (cp >= 0x20000 && cp <= 0x2a6df)
+    )
+      return "kanji";
+    if (
+      (cp >= 0x3000 && cp <= 0x303f) ||
+      (cp >= 0xff01 && cp <= 0xff0f) ||
+      (cp >= 0xff1a && cp <= 0xff20) ||
+      (cp >= 0xff3b && cp <= 0xff40) ||
+      (cp >= 0xff5b && cp <= 0xff65)
+    )
+      return "jp_punct_" + cp;
+    if (cp >= 0xff10 && cp <= 0xff19) return "fw_digit";
+    if (cp >= 0xff21 && cp <= 0xff3a) return "fw_upper";
+    if (cp >= 0xff41 && cp <= 0xff5a) return "fw_lower";
+    return "other_" + cp;
+  }
+
+  function isSingleCharCategory(cat) {
+    return cat && (cat.startsWith("ascii_symbol_") || cat.startsWith("jp_punct_") || cat === "space");
+  }
+
+  function getWordRangeFallback(lineText, col0) {
+    const len = lineText.length;
+    if (len === 0) return { start: 0, end: 0 };
+    const c = Math.min(col0, len - 1);
+    const pivotCat = getCharCategory(lineText[c]);
+    if (isSingleCharCategory(pivotCat)) return { start: c, end: c + 1 };
+    let start = c;
+    while (start > 0 && getCharCategory(lineText[start - 1]) === pivotCat) start--;
+    let end = c + 1;
+    while (end < len && getCharCategory(lineText[end]) === pivotCat) end++;
+    return { start, end };
+  }
+
+  // kuromoji tokenization with caching, token boundaries only
+  let tokenCache = { text: null, boundaries: null };
+
+  let kuromojiEnabled = settings.kuromojiEnabled;
+
+  setKuromojiEnabled = (val) => {
+    kuromojiEnabled = val;
+    tokenCache = { text: null, boundaries: null };
+  };
+
+  async function getBoundaries(lineText) {
+    if (!kuromojiEnabled) return null;
+    if (tokenCache.text === lineText) return tokenCache.boundaries;
+    const tokens = await window.electronAPI.tokenize(lineText);
+    if (!tokens) return null;
+    const boundaries = [];
+    let pos = 0;
+    for (const surface of tokens) {
+      boundaries.push(pos);
+      pos += surface.length;
+    }
+    boundaries.push(pos);
+    tokenCache = { text: lineText, boundaries };
+    return boundaries;
+  }
+
+  function findTokenRange(boundaries, col0) {
+    for (let i = 0; i < boundaries.length - 1; i++) {
+      if (col0 >= boundaries[i] && col0 < boundaries[i + 1]) {
+        return { start: boundaries[i], end: boundaries[i + 1] };
+      }
+    }
+    const last = boundaries[boundaries.length - 1];
+    return { start: last, end: last };
+  }
+
+  function nextBoundary(boundaries, col0) {
+    for (const b of boundaries) {
+      if (b > col0) return b;
+    }
+    return boundaries[boundaries.length - 1];
+  }
+
+  function prevBoundary(boundaries, col0) {
+    let prev = 0;
+    for (const b of boundaries) {
+      if (b >= col0) return prev;
+      prev = b;
+    }
+    return prev;
+  }
+
+  // public API
+  async function getWordRange(lineText, col0) {
+    const boundaries = await getBoundaries(lineText);
+    if (!boundaries) return getWordRangeFallback(lineText, col0);
+    return findTokenRange(boundaries, col0);
+  }
+
+  async function moveRight(lineText, col0) {
+    const len = lineText.length;
+    if (col0 >= len) return len;
+    const boundaries = await getBoundaries(lineText);
+    if (!boundaries) {
+      const cat = getCharCategory(lineText[col0]);
+      if (isSingleCharCategory(cat)) return col0 + 1;
+      let i = col0 + 1;
+      while (i < len && getCharCategory(lineText[i]) === cat) i++;
+      return i;
+    }
+    return nextBoundary(boundaries, col0);
+  }
+
+  async function moveLeft(lineText, col0) {
+    if (col0 <= 0) return 0;
+    const boundaries = await getBoundaries(lineText);
+    if (!boundaries) {
+      const cat = getCharCategory(lineText[col0 - 1]);
+      if (isSingleCharCategory(cat)) return col0 - 1;
+      let i = col0 - 1;
+      while (i > 0 && getCharCategory(lineText[i - 1]) === cat) i--;
+      return i;
+    }
+    return prevBoundary(boundaries, col0);
+  }
+
+  // ctrl + arror, ctrl + shift + arrow, ctrl + delete/backspace
+  async function execJapaneseWordMove(mode, select, del) {
+    const model = monacoEditor.getModel();
+    if (!model) return;
+    const selections = monacoEditor.getSelections();
+
+    if (del) {
+      const edits = (
+        await Promise.all(
+          selections.map(async (sel) => {
+            const curLine = sel.positionLineNumber;
+            const curCol1 = sel.positionColumn;
+            const lineText = model.getLineContent(curLine);
+            const lineLen = lineText.length;
+
+            if (del === "deleteRight") {
+              if (!sel.isEmpty()) return { range: sel, text: "" };
+              if (curCol1 - 1 >= lineLen) {
+                const lineCount = model.getLineCount();
+                if (curLine >= lineCount) return null;
+                return { range: new monaco.Range(curLine, curCol1, curLine + 1, 1), text: "" };
+              }
+              const end0 = await moveRight(lineText, curCol1 - 1);
+              return { range: new monaco.Range(curLine, curCol1, curLine, end0 + 1), text: "" };
+            } else {
+              if (!sel.isEmpty()) return { range: sel, text: "" };
+              if (curCol1 === 1) {
+                if (curLine <= 1) return null;
+                const prevLineLen = model.getLineContent(curLine - 1).length;
+                return { range: new monaco.Range(curLine - 1, prevLineLen + 1, curLine, 1), text: "" };
+              }
+              const start0 = await moveLeft(lineText, curCol1 - 1);
+              return { range: new monaco.Range(curLine, start0 + 1, curLine, curCol1), text: "" };
+            }
+          }),
+        )
+      ).filter(Boolean);
+
+      if (edits.length) {
+        monacoEditor.pushUndoStop();
+        monacoEditor.executeEdits("japanese-word-delete", edits);
+        monacoEditor.pushUndoStop();
+      }
+      return;
+    }
+
+    const newSelections = await Promise.all(
+      selections.map(async (sel) => {
+        let curLine = sel.positionLineNumber;
+        let curCol1 = sel.positionColumn;
+        const lineText = model.getLineContent(curLine);
+        const lineLen = lineText.length;
+        let newCol1;
+
+        if (mode === "right") {
+          if (curCol1 - 1 >= lineLen) {
+            const lineCount = model.getLineCount();
+            if (curLine < lineCount) {
+              curLine++;
+              newCol1 = 1;
+            } else newCol1 = curCol1;
+          } else {
+            newCol1 = (await moveRight(lineText, curCol1 - 1)) + 1;
+          }
+        } else {
+          if (curCol1 === 1) {
+            if (curLine > 1) {
+              curLine--;
+              newCol1 = model.getLineContent(curLine).length + 1;
+            } else newCol1 = 1;
+          } else {
+            newCol1 = (await moveLeft(lineText, curCol1 - 1)) + 1;
+          }
+        }
+
+        if (select) {
+          return new monaco.Selection(sel.selectionStartLineNumber, sel.selectionStartColumn, curLine, newCol1);
+        }
+        return new monaco.Selection(curLine, newCol1, curLine, newCol1);
+      }),
+    );
+
+    monacoEditor.setSelections(newSelections);
+  }
+
+  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.RightArrow, () =>
+    execJapaneseWordMove("right", false, null),
+  );
+  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.LeftArrow, () =>
+    execJapaneseWordMove("left", false, null),
+  );
+  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.RightArrow, () =>
+    execJapaneseWordMove("right", true, null),
+  );
+  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.LeftArrow, () =>
+    execJapaneseWordMove("left", true, null),
+  );
+  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Delete, () =>
+    execJapaneseWordMove("right", false, "deleteRight"),
+  );
+  monacoEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backspace, () =>
+    execJapaneseWordMove("left", false, "deleteLeft"),
+  );
+
+  // double click
+
+  monacoEditor.onMouseDown((e) => {
+    if (e.event.detail !== 2) return;
+
+    const CONTENT_TEXT = monaco.editor.MouseTargetType.CONTENT_TEXT;
+    const CONTENT_EMPTY = monaco.editor.MouseTargetType.CONTENT_EMPTY;
+    if (e.target.type !== CONTENT_TEXT && e.target.type !== CONTENT_EMPTY) return;
+
+    const pos = e.target.position;
+    if (!pos) return;
+
+    e.event.preventDefault();
+
+    const model = monacoEditor.getModel();
+    if (!model) return;
+    const lineText = model.getLineContent(pos.lineNumber);
+    const col0 = pos.column - 1;
+
+    const fallback = getWordRangeFallback(lineText, col0);
+    monacoEditor.setSelection(new monaco.Range(pos.lineNumber, fallback.start + 1, pos.lineNumber, fallback.end + 1));
+
+    getWordRange(lineText, col0).then(({ start, end }) => {
+      const cur = monacoEditor.getSelection();
+      if (cur && cur.startLineNumber === pos.lineNumber) {
+        monacoEditor.setSelection(new monaco.Range(pos.lineNumber, start + 1, pos.lineNumber, end + 1));
+      }
+    });
+  });
+})();
 
 // subtext shortcut
 monacoEditor.addAction({
@@ -1193,6 +1468,9 @@ function applySettings() {
     ? "inline-block"
     : "none";
   document.querySelector("#toggleFolding .checkmark").style.display = settings.folding ? "inline-block" : "none";
+  document.querySelector("#toggleKuromoji .checkmark").style.display = settings.kuromojiEnabled
+    ? "inline-block"
+    : "none";
 
   // status bar visibility
   const statusBar = document.getElementById("status-bar");
@@ -1232,6 +1510,10 @@ document.getElementById("toggleSyntaxHighlight").onclick = () => {
 };
 document.getElementById("toggleFolding").onclick = () => toggleSetting("folding");
 document.getElementById("toggleStatusBar").onclick = () => toggleSetting("statusBarVisible");
+document.getElementById("toggleKuromoji").onclick = () => {
+  toggleSetting("kuromojiEnabled");
+  setKuromojiEnabled(settings.kuromojiEnabled);
+};
 
 // editor settings reset button
 document.querySelector("#settings-menu #settingsLayout .reset").addEventListener("click", () => {
@@ -2368,6 +2650,7 @@ async function attemptCloseTab(data) {
         yesBtn.removeEventListener("click", onSave);
         noBtn.removeEventListener("click", onDontSave);
         cancelBtn.removeEventListener("click", onCancel);
+        window.removeEventListener("keydown", onKeyDown);
       };
 
       const onSave = async () => {
@@ -2411,9 +2694,25 @@ async function attemptCloseTab(data) {
         resolve("cancelled");
       };
 
+      const onKeyDown = (e) => {
+        if (!isModalDisplayed) return;
+        const key = e.key.toLowerCase();
+        if (key === "s") {
+          e.preventDefault();
+          onSave();
+        } else if (key === "d") {
+          e.preventDefault();
+          onDontSave();
+        } else if (key === "c" || key === "escape") {
+          e.preventDefault();
+          onCancel();
+        }
+      };
+
       yesBtn.addEventListener("click", onSave);
       noBtn.addEventListener("click", onDontSave);
       cancelBtn.addEventListener("click", onCancel);
+      window.addEventListener("keydown", onKeyDown);
       return;
     }
 
@@ -2507,6 +2806,7 @@ function attemptCloseWindow() {
     saveAllBtn.removeEventListener("click", onSaveAll);
     discardAllBtn.removeEventListener("click", onDiscardAll);
     cancelAllBtn.removeEventListener("click", onCancelAll);
+    window.removeEventListener("keydown", onKeyDown);
   };
 
   const closeConfirm = () => {
@@ -2575,9 +2875,25 @@ function attemptCloseWindow() {
     monacoEditor?.focus();
   };
 
+  const onKeyDown = (e) => {
+    if (!isModalDisplayed) return;
+    const key = e.key.toLowerCase();
+    if (key === "s") {
+      e.preventDefault();
+      onSaveAll();
+    } else if (key === "d") {
+      e.preventDefault();
+      onDiscardAll();
+    } else if (key === "c" || key === "escape") {
+      e.preventDefault();
+      onCancelAll();
+    }
+  };
+
   saveAllBtn.addEventListener("click", onSaveAll);
   discardAllBtn.addEventListener("click", onDiscardAll);
   cancelAllBtn.addEventListener("click", onCancelAll);
+  window.addEventListener("keydown", onKeyDown);
 }
 
 // switch tab
@@ -3045,6 +3361,11 @@ let isShowingMessage = false;
 let isWindowFocused = true; // default is focused
 
 function showMessage(id) {
+  const currentShowing = document.querySelector(".show");
+  if (messageQueue.includes(id) || (currentShowing && currentShowing.id === id)) {
+    return;
+  }
+
   messageQueue.push(id);
   if (!isShowingMessage && isWindowFocused) {
     processQueue();
