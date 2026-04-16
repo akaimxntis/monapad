@@ -504,6 +504,7 @@
         overflow: visible;
       }
       #tabs {
+        position: relative;
         display: flex;
         flex-grow: 1;
         min-width: 0;
@@ -512,6 +513,18 @@
         align-items: center;
         user-select: none;
         -webkit-app-region: no-drag;
+      }
+
+      #drop-indicator {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 2px;
+        height: 100%;
+        background: var(--highlight);
+        display: none;
+        z-index: 10;
+        pointer-events: none;
       }
       #tabs::-webkit-scrollbar {
         width: 0px;
@@ -1264,7 +1277,9 @@
         </button>
 
         <div id="tabs-container">
-          <div id="tabs"></div>
+          <div id="tabs">
+            <div id="drop-indicator"></div>
+          </div>
 
           <button id="add-tab" aria-label="Add Tab">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 11.95 11.95" width="13" height="13">

@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
   createNewWindowWithTab: (tabData, position) => ipcRenderer.invoke("window:createNewWithTab", tabData, position),
   // receive tab data on new window
   onLoadTabData: (callback) => ipcRenderer.on("load-tab-data", (event, tabData) => callback(tabData)),
+  // external tab drop preview
+  onShowExternalDropIndicator: (callback) =>
+    ipcRenderer.on("show-external-drop-indicator", (event, payload) => callback(payload)),
+  onHideExternalDropIndicator: (callback) => ipcRenderer.on("hide-external-drop-indicator", () => callback()),
   // assign each window id
   onAssignWindowId: (callback) => ipcRenderer.on("assign-window-id", (_, id) => callback(id)),
   // get window id
@@ -28,6 +32,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   isWindowMinimized: (windowId) => ipcRenderer.invoke("isWindowMinimized", windowId),
   // send tab to different window
   sendTabToWindow: (windowId, tabData) => ipcRenderer.invoke("tab:sendToWindow", windowId, tabData),
+  previewTabDrop: (targetWindowId, payload) => ipcRenderer.send("tab:previewDrop", { targetWindowId, ...payload }),
+  clearPreviewTabDrop: (targetWindowId) => ipcRenderer.send("tab:clearPreviewDrop", { targetWindowId }),
   // focus window after tab is sent
   focusWindow: (windowId) => ipcRenderer.invoke("focus-window", windowId),
   // small window when dragging tab outside toolbar

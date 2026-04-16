@@ -7,6 +7,7 @@ import i18next from "i18next";
 const toolbar = document.getElementById("toolbar");
 const tabsContainer = document.getElementById("tabs-container");
 const tabs = document.getElementById("tabs");
+const dropIndicator = document.getElementById("drop-indicator");
 const windowControls = document.getElementById("window-controls");
 const editor = document.getElementById("editor");
 const addTabButton = document.getElementById("add-tab");
@@ -68,6 +69,8 @@ const fileDropBox = document.getElementById("file-drop-background");
 const fileDrop = document.getElementById("file-drop");
 
 // tab dragging
+let lastPreviewX = null;
+let lastPreviewY = null;
 let draggingTab = null;
 let draggingTabData = null;
 let dragStartX = 0;
@@ -82,6 +85,7 @@ let dragStartClientPos = null;
 let cachedToolbarRect = null;
 let lastWindowCheck = 0;
 let externalCancelDragging = null;
+let externalPreviewTargetWindowId = null;
 // flag indicates enableTabDragging is middle of mousedown event, in case mouseup triggered middle of it
 let isHandlingMouseDown = false;
 let deferredOnMouseUp = false;
@@ -136,6 +140,13 @@ window.electronAPI.onAssignWindowId((id) => {
   myWindowId = id;
 });
 
+window.electronAPI.onShowExternalDropIndicator(({ dropScreenX, dropScreenY }) => {
+  showExternalDropIndicator(dropScreenX, dropScreenY);
+});
+window.electronAPI.onHideExternalDropIndicator(() => {
+  hideDropIndicator();
+});
+
 // app version
 window.electronAPI.getAppVersion().then((versions) => {
   document.querySelector("#version-text").textContent = `v${versions.app}`;
@@ -155,8 +166,39 @@ window.electronAPI.onOpenFile(async (filePath) => {
   }
 });
 
+function getTabInsertIndexByScreenX(screenX) {
+  if (typeof screenX !== "number") return null;
+
+  const clientX = screenX - window.screenX;
+  const tabElements = Array.from(tabs.querySelectorAll(".tab"));
+  if (!tabElements.length) return 0;
+
+  const rects = tabElements.map((tab) => tab.getBoundingClientRect());
+  const firstRect = rects[0];
+  const lastRect = rects[rects.length - 1];
+
+  if (clientX < firstRect.left) return 0;
+  if (clientX > lastRect.right) return tabElements.length;
+
+  for (let i = 0; i < rects.length; i++) {
+    const rect = rects[i];
+    if (clientX >= rect.left && clientX <= rect.right) {
+      return clientX <= rect.left + rect.width / 2 ? i : i + 1;
+    }
+    const nextRect = rects[i + 1];
+    if (nextRect && clientX < nextRect.left) {
+      return i + 1;
+    }
+  }
+
+  return tabElements.length;
+}
+
 // receive data on open in new window
 window.electronAPI.onLoadTabData((receivedTabData) => {
+  hideDropIndicator();
+  const payload = receivedTabData.tabInfo || receivedTabData;
+
   // remove existing initial tab
   if (tabData.length === 1 && !tabData[0].content.trim() && !tabData[0].path) {
     const defaultTab = tabData[0];
@@ -165,24 +207,24 @@ window.electronAPI.onLoadTabData((receivedTabData) => {
   }
 
   // create new tab
-  const newTab = createTab(receivedTabData.name, receivedTabData.content, receivedTabData.path);
-  const newTabData = tabData[tabData.length - 1];
+  const insertIndex = getTabInsertIndexByScreenX(receivedTabData.dropScreenX);
+  const newTabData = createTab(payload.name, payload.content, payload.path, insertIndex);
 
   // restore tab data
-  newTabData.isFileSaved = receivedTabData.isFileSaved;
-  newTabData.originalContent = receivedTabData.originalContent;
-  newTabData.fontSize = receivedTabData.fontSize;
-  newTabData.wordWrap = receivedTabData.wordWrap;
-  newTabData.isMarkdown = receivedTabData.isMarkdown;
+  newTabData.isFileSaved = payload.isFileSaved;
+  newTabData.originalContent = payload.originalContent;
+  newTabData.fontSize = payload.fontSize;
+  newTabData.wordWrap = payload.wordWrap;
+  newTabData.isMarkdown = payload.isMarkdown;
 
   // restore save state
-  if (!receivedTabData.isFileSaved) {
+  if (!payload.isFileSaved) {
     const close = newTabData.element.querySelector(".close");
     if (close) close.classList.add("show-unsaved");
   }
 
-  if (receivedTabData.hasReloadButton) {
-    reloadButton(newTabData, receivedTabData.path, "add");
+  if (payload.hasReloadButton) {
+    reloadButton(newTabData, payload.path, "add");
   }
 
   switchTab(newTabData);
@@ -2088,6 +2130,98 @@ function updateStatusBar() {
   encodingEl.title = i18next.t("statusBar.encodingTooltip");
 }
 
+// drag & drop indicator when dragging tab to another window
+function showDropIndicator(clientX) {
+  if (!dropIndicator) return;
+  const tabsRect = tabs.getBoundingClientRect();
+  const tabElements = Array.from(tabs.children).filter((el) => el.classList.contains("tab") && el !== draggingTab);
+  if (!tabElements.length) {
+    dropIndicator.style.left = "0px";
+    dropIndicator.style.display = "block";
+    return;
+  }
+
+  const relativeX = clientX - tabsRect.left;
+  let left = 0;
+
+  for (let i = 0; i < tabElements.length; i++) {
+    const rect = tabElements[i].getBoundingClientRect();
+    const targetLeft = rect.left - tabsRect.left;
+    const targetRight = rect.right - tabsRect.left;
+    const midpoint = targetLeft + rect.width / 2;
+
+    if (relativeX <= midpoint) {
+      left = targetLeft;
+      break;
+    }
+
+    if (i === tabElements.length - 1 || relativeX <= tabElements[i + 1].getBoundingClientRect().left - tabsRect.left) {
+      left = targetRight;
+      break;
+    }
+  }
+
+  left = Math.max(0, Math.min(left, tabsRect.width));
+  dropIndicator.style.left = `${left}px`;
+  dropIndicator.style.display = "block";
+}
+
+function hideDropIndicator() {
+  if (!dropIndicator) return;
+  dropIndicator.style.display = "none";
+}
+
+function showExternalDropIndicator(screenX, screenY) {
+  if (!dropIndicator) return;
+  if (typeof screenX !== "number" || typeof screenY !== "number") {
+    hideDropIndicator();
+    return;
+  }
+
+  const localClientX = screenX - window.screenX;
+  const tabsRect = tabs.getBoundingClientRect();
+
+  if (localClientX <= tabsRect.left) {
+    showDropIndicator(tabsRect.left);
+    return;
+  }
+
+  if (localClientX >= tabsRect.right) {
+    showDropIndicator(tabsRect.right);
+    return;
+  }
+
+  showDropIndicator(localClientX);
+}
+
+function resetExternalPreviewTargetWindow() {
+  if (externalPreviewTargetWindowId !== null) {
+    window.electronAPI.clearPreviewTabDrop(externalPreviewTargetWindowId);
+    externalPreviewTargetWindowId = null;
+  }
+}
+
+function setExternalPreviewTargetWindow(targetWindowId, dropScreenX, dropScreenY) {
+  if (externalPreviewTargetWindowId !== null && externalPreviewTargetWindowId !== targetWindowId) {
+    window.electronAPI.clearPreviewTabDrop(externalPreviewTargetWindowId);
+    externalPreviewTargetWindowId = null;
+  }
+
+  if (targetWindowId && targetWindowId !== myWindowId) {
+    externalPreviewTargetWindowId = targetWindowId;
+    if (dropScreenX !== lastPreviewX || dropScreenY !== lastPreviewY) {
+      lastPreviewX = dropScreenX;
+      lastPreviewY = dropScreenY;
+      window.electronAPI.previewTabDrop(targetWindowId, { dropScreenX, dropScreenY });
+    }
+    return;
+  }
+
+  lastPreviewX = null;
+  lastPreviewY = null;
+  resetExternalPreviewTargetWindow();
+}
+
 // tab dragging
 function enableTabDragging(tab, data) {
   tab.addEventListener("mousedown", async (e) => {
@@ -2148,6 +2282,7 @@ function enableTabDragging(tab, data) {
       mouseY > toolbarRect.bottom + toolbarRect.height / 2;
 
     if (isOutsideToolbar) {
+      hideDropIndicator();
       tabs.classList.remove("dragging");
       draggingTab.style.opacity = "0.5";
       overlayWindowVisible = true;
@@ -2157,6 +2292,7 @@ function enableTabDragging(tab, data) {
         const isWarn = draggingTabData.isWarned;
         window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY }).then(async (targetWindowId) => {
           if (!windowBoundsCache) {
+            setExternalPreviewTargetWindow(null);
             return;
           }
           const myBounds = windowBoundsCache;
@@ -2182,6 +2318,11 @@ function enableTabDragging(tab, data) {
             state = "new";
           }
 
+          if (state === "move") {
+            setExternalPreviewTargetWindow(targetWindowId, e.screenX, e.screenY);
+          } else {
+            setExternalPreviewTargetWindow(null);
+          }
           window.electronAPI.setCursorWindowState(state);
         });
       }
@@ -2193,14 +2334,15 @@ function enableTabDragging(tab, data) {
       draggingTab.style.opacity = "1";
       overlayWindowVisible = false;
       window.electronAPI.destroyCursorWindow();
-    }
+      setExternalPreviewTargetWindow(null);
+      hideDropIndicator();
 
-    currentX = mouseX - startX;
-    draggingTab.style.transform = `translateX(${currentX}px)`;
+      currentX = mouseX - startX;
+      draggingTab.style.transform = `translateX(${currentX}px)`;
+    }
 
     const tabsArray = Array.from(tabs.children).filter((el) => el.classList.contains("tab"));
     const currentRect = draggingTab.getBoundingClientRect();
-
     for (let i = 0; i < tabsArray.length; i++) {
       const targetTab = tabsArray[i];
       if (targetTab === draggingTab) continue;
@@ -2281,6 +2423,8 @@ function enableTabDragging(tab, data) {
       window.electronAPI.destroyCursorWindow();
     }
 
+    resetExternalPreviewTargetWindow();
+    hideDropIndicator();
     draggingTab = null;
     draggingTabData = null;
     cachedToolbarRect = null;
@@ -2327,9 +2471,15 @@ function enableTabDragging(tab, data) {
             isMarkdown: releasedTabData.isMarkdown,
             hasReloadButton: releasedTabData.element?.classList.contains("has-reload-button"),
           };
-          window.electronAPI.sendTabToWindow(targetWindowId, tabInfo).then(() => {
-            window.electronAPI.focusWindow(targetWindowId);
-          });
+          window.electronAPI
+            .sendTabToWindow(targetWindowId, {
+              tabInfo,
+              dropScreenX: e.screenX,
+              dropScreenY: e.screenY,
+            })
+            .then(() => {
+              window.electronAPI.focusWindow(targetWindowId);
+            });
 
           removeTabAndAdjustUI(releasedTabData);
 

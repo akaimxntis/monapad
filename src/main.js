@@ -282,10 +282,27 @@ ipcMain.handle("isWindowMinimized", (event, windowId) => {
 });
 
 // send tab to different window
-ipcMain.handle("tab:sendToWindow", (event, targetWindowId, tabData) => {
+ipcMain.handle("tab:sendToWindow", (event, targetWindowId, payload) => {
   const targetWin = BrowserWindow.fromId(targetWindowId);
   if (targetWin && !targetWin.isDestroyed()) {
-    targetWin.webContents.send("load-tab-data", tabData);
+    targetWin.webContents.send("load-tab-data", payload);
+  }
+});
+
+ipcMain.on("tab:previewDrop", (event, payload) => {
+  const targetWin = BrowserWindow.fromId(payload.targetWindowId);
+  if (targetWin && !targetWin.isDestroyed()) {
+    targetWin.webContents.send("show-external-drop-indicator", {
+      dropScreenX: payload.dropScreenX,
+      dropScreenY: payload.dropScreenY,
+    });
+  }
+});
+
+ipcMain.on("tab:clearPreviewDrop", (event, payload) => {
+  const targetWin = BrowserWindow.fromId(payload.targetWindowId);
+  if (targetWin && !targetWin.isDestroyed()) {
+    targetWin.webContents.send("hide-external-drop-indicator");
   }
 });
 
