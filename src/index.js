@@ -110,6 +110,10 @@ const defaultSettings = {
 const settings = JSON.parse(localStorage.getItem("editorSettings")) || defaultSettings;
 let selectedFontFamily = localStorage.getItem("selectedFontFamily") || "Iosevka";
 let monacoEditor = null;
+const WRAP_MEASURE_OPTIONS = {
+  wrappingStrategy: "advanced",
+  disableMonospaceOptimizations: true,
+};
 
 // tabs hover state, width handling
 let tabAreaHovered = false;
@@ -315,7 +319,6 @@ function updateMenuLabels() {
   // settings
   document.querySelector("#settings-menu .font .h1").textContent = i18next.t("settings.font");
   document.querySelector("#settings-menu .size").textContent = i18next.t("settings.size");
-  document.getElementById("fontDescription").innerHTML = i18next.t("settings.fontDescription");
   document.querySelector("#settingsLayout .h1").textContent = i18next.t("settings.layout");
   document.querySelector("#toggleStatusBar span").textContent = i18next.t("settings.statusBar");
   document.querySelector("#toggleKuromoji span").textContent = i18next.t("settings.kuromoji");
@@ -673,6 +676,7 @@ monaco.editor.defineTheme("custom-theme", createCustomTheme());
 monacoEditor = monaco.editor.create(editor, {
   language: "monapad",
   wordWrap: "on",
+  ...WRAP_MEASURE_OPTIONS,
   minimap: { enabled: settings.minimap, renderCharacters: true },
   renderLineHighlight: settings.lineHighlight ? "line" : "none",
   lineNumbers: settings.lineNumbers ? "on" : "off",
@@ -1445,9 +1449,11 @@ function applyFontToMonaco() {
 
   monacoEditor.updateOptions({
     fontFamily: finalFont,
+    ...WRAP_MEASURE_OPTIONS,
   });
   document.fonts.ready.then(() => {
     monaco.editor.remeasureFonts();
+    monacoEditor.render(true);
   });
 }
 
@@ -3120,6 +3126,7 @@ function switchTab(data) {
   const editorOptions = {
     fontSize,
     wordWrap: isWordWrapOn ? "on" : "off",
+    ...WRAP_MEASURE_OPTIONS,
     scrollbar: {
       horizontal: isWordWrapOn ? "hidden" : "auto",
     },
@@ -3897,6 +3904,7 @@ customContextMenu.addEventListener("click", async (e) => {
       if (currentTab) currentTab.wordWrap = isWordWrapOn;
       monacoEditor.updateOptions({
         wordWrap: isWordWrapOn ? "on" : "off",
+        ...WRAP_MEASURE_OPTIONS,
         scrollbar: {
           horizontal: isWordWrapOn ? "hidden" : "auto",
         },

@@ -59,7 +59,6 @@
   "settings": {
     "font": "フォント",
     "size": "サイズ",
-    "fontDescription": "非等幅フォントでは折り返しがずれる場合があります。気になる方は等幅フォントをご利用ください。",
     "layout": "エディタ",
     "highlightLine": "現在行をハイライト",
     "lineNumbers": "行番号",

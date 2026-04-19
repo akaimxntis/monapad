@@ -59,7 +59,6 @@
   "settings": {
     "font": "Schriftart",
     "size": "Größe",
-    "fontDescription": "Zeilenumbruch kann bei proportionalen Schriftarten zu Fehlausrichtung führen. Verwende bei Bedarf eine nichtproportionale (monospace) Schriftart.",
     "layout": "Editor",
     "highlightLine": "Aktuelle Zeile hervorheben",
     "lineNumbers": "Zeilennummern",

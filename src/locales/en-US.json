@@ -59,7 +59,6 @@
   "settings": {
     "font": "Font",
     "size": "Size",
-    "fontDescription": "Word wrap may misalign with proportional fonts. Use a monospaced font if needed.",
     "layout": "Editor",
     "highlightLine": "Line Highlight",
     "lineNumbers": "Line Numbers",

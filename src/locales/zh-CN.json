@@ -59,7 +59,6 @@
   "settings": {
     "font": "字体",
     "size": "大小",
-    "fontDescription": "使用比例字体时自动换行可能会错位。如需精确对齐，请使用等宽字体。",
     "layout": "编辑器布局",
     "highlightLine": "当前行高亮",
     "lineNumbers": "显示行号",
