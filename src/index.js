@@ -130,7 +130,7 @@ let dragCounter = 0;
 let rightClickedTab = null;
 
 // watch only active tab, remove old watcher when tab switched (switchTab)
-let currentWatcher = null;
+let currentWatchedFilePath = null;
 // watch css file used as current theme
 let currentWatchedCssFile = null;
 
@@ -1087,8 +1087,64 @@ monacoEditor.addAction(createToggleHeadingAction(2)); // Ctrl+Shift+2
 monacoEditor.addAction(createToggleHeadingAction(3)); // Ctrl+Shift+3
 
 let currentDecorations = [];
+let decorationFrameId = null;
+const DECORATION_BUFFER_LINES = 100;
+const DECORATION_MATCHERS = [
+  /^#\s[^#]/,
+  /^##\s[^#]/,
+  /^###\s[^#]/,
+  /^-#\s[^#]/,
+  /^>\s/,
+];
+
+function getDecorationLineRanges(model) {
+  const visibleRanges = monacoEditor.getVisibleRanges();
+  const lineCount = model.getLineCount();
+
+  if (!visibleRanges.length) {
+    return [{ startLineNumber: 1, endLineNumber: lineCount }];
+  }
+
+  const expandedRanges = visibleRanges
+    .map((range) => ({
+      startLineNumber: Math.max(1, range.startLineNumber - DECORATION_BUFFER_LINES),
+      endLineNumber: Math.min(lineCount, range.endLineNumber + DECORATION_BUFFER_LINES),
+    }))
+    .sort((a, b) => a.startLineNumber - b.startLineNumber);
+
+  const mergedRanges = [];
+  for (const range of expandedRanges) {
+    const lastRange = mergedRanges.at(-1);
+    if (!lastRange || range.startLineNumber > lastRange.endLineNumber + 1) {
+      mergedRanges.push(range);
+      continue;
+    }
+
+    lastRange.endLineNumber = Math.max(lastRange.endLineNumber, range.endLineNumber);
+  }
+
+  return mergedRanges;
+}
+
+function isInsideCodeBlockBeforeLine(model, lineNumber) {
+  let insideCodeBlock = false;
+
+  for (let i = 1; i < lineNumber; i++) {
+    const trimmed = model.getLineContent(i).trimStart();
+    if (trimmed.startsWith("```")) {
+      insideCodeBlock = !insideCodeBlock;
+    }
+  }
+
+  return insideCodeBlock;
+}
 
 function applyDecorations() {
+  if (decorationFrameId !== null) {
+    cancelAnimationFrame(decorationFrameId);
+    decorationFrameId = null;
+  }
+
   const model = monacoEditor.getModel();
   if (!model) return;
 
@@ -1097,8 +1153,6 @@ function applyDecorations() {
     return;
   }
 
-  const fullText = model.getValue();
-  const lines = fullText.split("\n");
   const decorations = [];
 
   if (model.getLanguageId() !== "monapad") {
@@ -1106,41 +1160,37 @@ function applyDecorations() {
     return;
   }
 
-  let insideCodeBlock = false;
+  const lineRanges = getDecorationLineRanges(model);
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const trimmed = line.trimStart();
-    const leadingSpaces = line.length - trimmed.length;
+  for (const range of lineRanges) {
+    let insideCodeBlock = isInsideCodeBlockBeforeLine(model, range.startLineNumber);
 
-    if (trimmed.startsWith("```")) {
-      insideCodeBlock = !insideCodeBlock;
-      continue;
-    }
+    for (let lineNumber = range.startLineNumber; lineNumber <= range.endLineNumber; lineNumber++) {
+      const line = model.getLineContent(lineNumber);
+      const trimmed = line.trimStart();
+      const leadingSpaces = line.length - trimmed.length;
 
-    if (insideCodeBlock) continue;
+      if (trimmed.startsWith("```")) {
+        insideCodeBlock = !insideCodeBlock;
+        continue;
+      }
 
-    const matchers = [
-      { regex: /^#\s[^#]/, className: "heading-1" }, // heading 1
-      { regex: /^##\s[^#]/, className: "heading-2" }, // heading 2
-      { regex: /^###\s[^#]/, className: "heading-3" }, // heading 3
-      { regex: /^-#\s[^#]/, className: "sub-text" }, // sub text
-      { regex: /^>\s/, className: "block-quote" }, // block quote
-    ];
+      if (insideCodeBlock) continue;
 
-    for (const { regex, className } of matchers) {
-      const match = trimmed.match(regex);
-      if (match) {
-        const markerLength = match[0].length;
-        const startColumn = leadingSpaces + 1;
-        const endColumn = startColumn + markerLength - 1;
+      for (const regex of DECORATION_MATCHERS) {
+        const match = trimmed.match(regex);
+        if (match) {
+          const markerLength = match[0].length;
+          const startColumn = leadingSpaces + 1;
+          const endColumn = startColumn + markerLength - 1;
 
-        decorations.push({
-          range: new monaco.Range(i + 1, startColumn, i + 1, endColumn),
-          options: { inlineClassName: "marker-transparent" },
-        });
+          decorations.push({
+            range: new monaco.Range(lineNumber, startColumn, lineNumber, endColumn),
+            options: { inlineClassName: "marker-transparent" },
+          });
 
-        break;
+          break;
+        }
       }
     }
   }
@@ -1148,10 +1198,19 @@ function applyDecorations() {
   currentDecorations = monacoEditor.deltaDecorations(currentDecorations, decorations);
 }
 
+function scheduleApplyDecorations() {
+  if (decorationFrameId !== null) return;
+
+  decorationFrameId = requestAnimationFrame(() => {
+    decorationFrameId = null;
+    applyDecorations();
+  });
+}
+
 // detect change in editor
 monacoEditor.onDidChangeModelContent(() => {
-  const active = tabData.find((t) => t.element.classList.contains("active"));
-  if (!active) return;
+  const active = currentTab;
+  if (!active || monacoEditor.getModel() !== active.model) return;
 
   const currentContent = monacoEditor.getValue();
   active.content = currentContent;
@@ -1162,21 +1221,13 @@ monacoEditor.onDidChangeModelContent(() => {
     return;
   }
 
-  const hasUnsavedChanges = currentContent.trim() !== (active.originalContent || "").trim();
-  active.isFileSaved = !hasUnsavedChanges;
-
-  // display unsaved dot
-  const close = active.element.querySelector(".close");
-  if (close) {
-    if (hasUnsavedChanges) {
-      close.classList.add("show-unsaved");
-    } else {
-      close.classList.remove("show-unsaved");
-    }
-  }
+  syncTabSaveState(active, currentContent);
 
   updateStatusBar();
-  applyDecorations();
+  scheduleApplyDecorations();
+});
+monacoEditor.onDidScrollChange(() => {
+  scheduleApplyDecorations();
 });
 applyDecorations();
 
@@ -2667,6 +2718,8 @@ function createTab(name, content = "", path = null, insertIndex = null) {
     viewState: null,
     isMarkdown: false,
     isWarned: false,
+    originalContent: content,
+    _lastExternalContent: path ? content : null,
   };
 
   if (insertIndex !== null && insertIndex >= 0 && insertIndex < tabData.length) {
@@ -2846,14 +2899,14 @@ async function attemptCloseTab(data) {
 
       const onKeyDown = (e) => {
         if (!isModalDisplayed) return;
-        const key = e.key.toLowerCase();
-        if (key === "s") {
+        const key = (e.key || "").toLowerCase();
+        if (e.code === "KeyS" || key === "s") {
           e.preventDefault();
           onSave();
-        } else if (key === "d") {
+        } else if (e.code === "KeyD" || key === "d") {
           e.preventDefault();
           onDontSave();
-        } else if (key === "c" || key === "escape") {
+        } else if (e.code === "KeyC" || e.code === "Escape" || key === "c" || key === "escape") {
           e.preventDefault();
           onCancel();
         }
@@ -3027,14 +3080,14 @@ function attemptCloseWindow() {
 
   const onKeyDown = (e) => {
     if (!isModalDisplayed) return;
-    const key = e.key.toLowerCase();
-    if (key === "s") {
+    const key = (e.key || "").toLowerCase();
+    if (e.code === "KeyS" || key === "s") {
       e.preventDefault();
       onSaveAll();
-    } else if (key === "d") {
+    } else if (e.code === "KeyD" || key === "d") {
       e.preventDefault();
       onDiscardAll();
-    } else if (key === "c" || key === "escape") {
+    } else if (e.code === "KeyC" || e.code === "Escape" || key === "c" || key === "escape") {
       e.preventDefault();
       onCancelAll();
     }
@@ -3094,10 +3147,6 @@ function switchTab(data) {
   monacoEditor.setModel(data.model);
   attachCtrlWheelListener();
 
-  if (data.originalContent === undefined) {
-    data.originalContent = data.content;
-  }
-
   currentTab = data;
   currentFilePath = data.path || data.name;
 
@@ -3121,15 +3170,16 @@ function switchTab(data) {
 
   applyDecorations();
 
-  // stop current watcher
-  if (currentWatcher) {
-    clearInterval(currentWatcher);
-    currentWatcher = null;
+  // stop watching previously active file
+  if (currentWatchedFilePath && currentWatchedFilePath !== data.path) {
+    window.electronAPI.unwatchFile(currentWatchedFilePath);
+    currentWatchedFilePath = null;
   }
 
-  // watch tab with path
-  if (data.path) {
+  // watch active file
+  if (data.path && currentWatchedFilePath !== data.path) {
     window.electronAPI.watchFile(data.path);
+    currentWatchedFilePath = data.path;
   }
 }
 
@@ -3175,8 +3225,15 @@ async function handleFileChange(targetTab, filePath) {
   targetTab.element.querySelector(".name").classList.remove("warn");
   if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, targetTab);
 
-  if (targetTab.isFileSaved && (content === targetTab._lastExternalContent || content === targetTab.originalContent)) {
+  // Ignore watcher noise if the on-disk content is unchanged from the last known disk snapshot.
+  if (content === targetTab._lastExternalContent) {
     reloadButton(targetTab, null, "remove");
+    return;
+  }
+
+  if (targetTab.isFileSaved && content === targetTab.originalContent) {
+    reloadButton(targetTab, null, "remove");
+    targetTab._lastExternalContent = content;
     return;
   }
 
@@ -3503,6 +3560,26 @@ async function saveFile() {
       return await saveAsFile();
     }
   }
+}
+
+function hasUnsavedChanges(tab, content = null) {
+  const nextContent = content ?? tab?.content ?? tab?.model?.getValue() ?? "";
+  const savedContent = tab?.originalContent ?? "";
+  return nextContent !== savedContent;
+}
+
+function syncTabSaveState(tab, content = null) {
+  if (!tab) return false;
+
+  const hasChanges = hasUnsavedChanges(tab, content);
+  tab.isFileSaved = !hasChanges;
+
+  const close = tab.element?.querySelector(".close");
+  if (close) {
+    close.classList.toggle("show-unsaved", hasChanges);
+  }
+
+  return hasChanges;
 }
 
 // file saved & file already opened message

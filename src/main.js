@@ -10,6 +10,7 @@ const kuromoji = require("kuromoji");
 
 const store = new Store();
 const watchers = new Map();
+const watcherRefCounts = new Map();
 const watchTimeouts = new Map();
 const watchEvents = new Map();
 const watchedCssFiles = new Map();
@@ -399,7 +400,10 @@ ipcMain.handle("file:exists", async (event, filePath) => {
 });
 
 ipcMain.handle("file:watch", (event, filePath) => {
-  if (watchers.has(filePath)) return;
+  if (watchers.has(filePath)) {
+    watcherRefCounts.set(filePath, (watcherRefCounts.get(filePath) || 0) + 1);
+    return;
+  }
 
   try {
     const watcher = fs.watch(filePath, (eventType) => {
@@ -445,6 +449,7 @@ ipcMain.handle("file:watch", (event, filePath) => {
     });
 
     watchers.set(filePath, watcher);
+    watcherRefCounts.set(filePath, 1);
   } catch (err) {
     log.error("watch error:", err);
   }
@@ -459,11 +464,19 @@ function sendToAllWindows(channel, data) {
 }
 
 ipcMain.handle("file:unwatch", (event, filePath) => {
+  const refCount = watcherRefCounts.get(filePath) || 0;
+  if (refCount > 1) {
+    watcherRefCounts.set(filePath, refCount - 1);
+    return;
+  }
+
   const watcher = watchers.get(filePath);
   if (watcher) {
     watcher.close();
     watchers.delete(filePath);
   }
+
+  watcherRefCounts.delete(filePath);
 
   // clear pending debounce timeout
   const timeout = watchTimeouts.get(filePath);
