@@ -1093,13 +1093,7 @@ monacoEditor.addAction(createToggleHeadingAction(3)); // Ctrl+Shift+3
 let currentDecorations = [];
 let decorationFrameId = null;
 const DECORATION_BUFFER_LINES = 100;
-const DECORATION_MATCHERS = [
-  /^#\s[^#]/,
-  /^##\s[^#]/,
-  /^###\s[^#]/,
-  /^-#\s[^#]/,
-  /^>\s/,
-];
+const DECORATION_MATCHERS = [/^#\s[^#]/, /^##\s[^#]/, /^###\s[^#]/, /^-#\s[^#]/, /^>\s/];
 
 function getDecorationLineRanges(model) {
   const visibleRanges = monacoEditor.getVisibleRanges();
@@ -1577,13 +1571,13 @@ function applySettings() {
   if (settings.statusBarVisible) {
     statusBar.style.display = "flex";
     checkmark.style.display = "inline-block";
-    editor.style.height = "calc(100vh - 35px - 25px)";
-    settingsMenu.style.height = "calc(100vh - 35px - 25px)";
+    editor.style.height = "calc(100vh - 35px - 25px - var(--window-top-safe-area))";
+    settingsMenu.style.height = "calc(100vh - 35px - 25px - var(--window-top-safe-area))";
   } else {
     statusBar.style.display = "none";
     checkmark.style.display = "none";
-    editor.style.height = "calc(100vh - 35px)";
-    settingsMenu.style.height = "calc(100vh - 35px)";
+    editor.style.height = "calc(100vh - 35px - var(--window-top-safe-area))";
+    settingsMenu.style.height = "calc(100vh - 35px - var(--window-top-safe-area))";
   }
 
   if (monacoEditor) {

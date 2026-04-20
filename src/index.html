@@ -85,6 +85,10 @@
         --windowClose: #e81123; /* window close */
         --warn: #cf5d6e; /* deleted file title */
 
+        --window-top-safe-area: 1px; /* to prevent windows 11 border from overlapping the content, set to 0px if not needed */
+        --toolbar-height: 35px;
+        --status-bar-height: 25px;
+
         /* You can specify one or more fonts to be used in the editor in order of priority */
         /* If this field is not empty, the font setting in the app will be ignored */
         /* Specify with the fallback font like: */
@@ -279,10 +283,13 @@
       #toolbar {
         display: flex;
         position: fixed;
+        top: 0;
         align-items: center;
         background: var(--color1);
         width: 100%;
-        height: 35px;
+        height: calc(var(--toolbar-height) + var(--window-top-safe-area));
+        padding-top: var(--window-top-safe-area);
+        box-sizing: border-box;
         overflow: visible;
         -webkit-app-region: drag;
       }
@@ -305,7 +312,7 @@
       #menu-button::before {
         content: "";
         position: absolute;
-        top: 35px;
+        top: calc(var(--toolbar-height) + var(--window-top-safe-area));
         left: 0;
         width: 20px;
         height: 1px;
@@ -326,7 +333,7 @@
       }
       #menu {
         position: fixed;
-        top: 40px;
+        top: calc(40px + var(--window-top-safe-area));
         left: 0px;
         background: var(--color2);
         display: none;
@@ -810,11 +817,11 @@
         color: var(--editorText);
         border: none;
         resize: none;
-        margin-top: 35px;
+        margin-top: calc(var(--toolbar-height) + var(--window-top-safe-area));
         border-top: 1px solid var(--color3);
       }
       #status-bar {
-        height: 25px;
+        height: var(--status-bar-height);
         background: var(--color2);
         font-size: 12px;
         display: flex;
@@ -1091,9 +1098,8 @@
         position: absolute;
         background: var(--color2);
         z-index: 9996;
-        height: calc(100vh - 35px - 25px);
         width: 260px;
-        top: 35px;
+        top: calc(var(--window-top-safe-area) + var(--toolbar-height));
         right: 0px;
         user-select: none;
         padding: 10px 0 115px 0;
