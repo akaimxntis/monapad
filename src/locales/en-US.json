@@ -34,6 +34,7 @@
     "fileAlreadyOpened": "File already opened!",
     "fileUpdated": "File reloaded",
     "fileModified": "File modified externally!",
+    "autosaveRestored": "Unsaved changes restored",
     "ReloadButtonTooltip": "Reload File"
   },
   "deviceShare": {
@@ -44,12 +45,17 @@
     "copyLink": "Copy",
     "copied": "Copied!",
     "regenerate": "Regenerate",
-    "expired": "expired!",
+    "expired": "expired",
     "close": "Close",
     "createError": "Could not create a temporary local link. Check that this device is connected to a network.",
     "tooLarge": "Text is too large. Maximum size is {{maxMb}} MB.",
     "pageCopy": "Copy",
     "pageCopied": "Copied!"
+  },
+  "autosave": {
+    "restoreMessage": "Unsaved changes were found for \"{{name}}\". Restore them?",
+    "restore": "Restore",
+    "discard": "Discard"
   },
   "editorMenu": {
     "cut": "Cut",

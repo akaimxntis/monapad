@@ -374,7 +374,8 @@
       #theme-menu,
       #recent-menu,
       #file-saved,
-      #file-opened {
+      #file-opened,
+      #autosave-restored {
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.7);
       }
       #menu button .label {
@@ -956,7 +957,8 @@
         font-weight: 500;
       }
       #confirm-save,
-      #confirm-save-window {
+      #confirm-save-window,
+      #autosave-restore {
         color: var(--editorText);
         padding: 20px;
         background: var(--color1);
@@ -973,7 +975,8 @@
       }
 
       #confirm-save p,
-      #confirm-save-window p {
+      #confirm-save-window p,
+      #autosave-restore p {
         margin-block-start: 0;
         margin-block-end: 0;
         margin-bottom: 15px;
@@ -995,7 +998,8 @@
         width: auto;
         gap: 10px;
       }
-      #confirm-save-window .confirm-buttons {
+      #confirm-save-window .confirm-buttons,
+      #autosave-restore .confirm-buttons {
         display: flex;
         justify-content: space-between;
         width: auto;
@@ -1006,7 +1010,8 @@
         text-decoration: underline;
       }
       #confirm-save .confirm-buttons button,
-      #confirm-save-window .confirm-buttons button {
+      #confirm-save-window .confirm-buttons button,
+      #autosave-restore .confirm-buttons button {
         display: flex;
         padding: 8px 16px;
         background: var(--color3);
@@ -1015,16 +1020,19 @@
         cursor: pointer;
       }
       #confirm-save-window .confirm-buttons #confirm-save-all,
-      #confirm-save .confirm-buttons #confirm-save-yes {
+      #confirm-save .confirm-buttons #confirm-save-yes,
+      #autosave-restore .confirm-buttons #autosave-restore-yes {
         background: var(--btnHighlight);
       }
       #confirm-save-window .confirm-buttons #confirm-save-all:hover,
-      #confirm-save .confirm-buttons #confirm-save-yes:hover {
+      #confirm-save .confirm-buttons #confirm-save-yes:hover,
+      #autosave-restore .confirm-buttons #autosave-restore-yes:hover {
         background: color-mix(in srgb, black 10%, var(--btnHighlight) 90%);
       }
 
       #confirm-save .confirm-buttons button:hover,
       #confirm-save-window .confirm-buttons button:hover,
+      #autosave-restore .confirm-buttons button:hover,
       #about button:hover {
         background: color-mix(in srgb, white 10%, var(--color3) 90%);
       }
@@ -1114,7 +1122,7 @@
         cursor: pointer;
       }
       #device-share-regenerate {
-        min-width: 150px;
+        min-width: 160px;
       }
       #device-share-regenerate:disabled {
         color: var(--grayOut);
@@ -1162,7 +1170,6 @@
         box-sizing: border-box;
       }
       #device-share-copy {
-        min-width: 80px;
         height: 32px;
         padding: 0 12px;
         border: none;
@@ -1637,6 +1644,7 @@
       <div id="file-opened" class="message">File already opened!</div>
       <div id="file-updated" class="message">File reloaded</div>
       <div id="file-modified" class="message">File modified externally!</div>
+      <div id="autosave-restored" class="message">Unsaved changes restored</div>
 
       <!-- editor context menu -->
       <div id="custom-context-menu" style="display: none; position: absolute" class="menu scrollable">
@@ -1999,6 +2007,14 @@
             <button id="confirm-save-all">Save All & Exit</button>
             <button id="confirm-discard-all">Discard & Exit</button>
             <button id="confirm-cancel-all">Cancel</button>
+          </div>
+        </div>
+        <!-- autosave restore -->
+        <div id="autosave-restore">
+          <p id="autosave-restore-message">Unsaved changes were found. Restore them?</p>
+          <div class="confirm-buttons">
+            <button id="autosave-restore-yes">Restore</button>
+            <button id="autosave-restore-no">Discard</button>
           </div>
         </div>
         <!-- about -->

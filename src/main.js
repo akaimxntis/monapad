@@ -28,11 +28,14 @@ let mobileShareServer = null;
 let mobileShareHost = null;
 let mobileSharePort = null;
 let mobileShareStartPromise = null;
+let autosaveDraftRecoveryClaimed = false;
 
 const mobileShareItems = new Map();
 const MOBILE_SHARE_CREATED_TTL_MS = 5 * 60 * 1000;
 const MOBILE_SHARE_OPENED_TTL_MS = 2 * 60 * 1000;
 const MOBILE_SHARE_MAX_TEXT_BYTES = 2 * 1024 * 1024;
+const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
+const AUTOSAVE_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 
 fs.readdirSync(logDir).forEach((file) => {
   if (file.startsWith("main.log.old")) {
@@ -101,6 +104,10 @@ function createWindow() {
       event.preventDefault();
       shell.openExternal(url);
     }
+  });
+
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents.send("assign-window-id", mainWindow.id);
   });
 }
 
@@ -176,7 +183,7 @@ function createNewWindow(parentWindow, position) {
     }
   });
 
-  win.webContents.once("did-finish-load", () => {
+  win.webContents.on("did-finish-load", () => {
     win.webContents.send("assign-window-id", win.id);
   });
 
@@ -409,6 +416,397 @@ ipcMain.handle("file:exists", async (event, filePath) => {
   } catch {
     return false;
   }
+});
+
+function getAutosaveDirs() {
+  const root = path.join(app.getPath("userData"), "autosave");
+  return {
+    root,
+    files: path.join(root, "files"),
+    drafts: path.join(root, "drafts"),
+    trashCurrent: path.join(root, "trash-current"),
+    trashPrevious: path.join(root, "trash-previous"),
+  };
+}
+
+async function ensureAutosaveDirs() {
+  const dirs = getAutosaveDirs();
+  await Promise.all([
+    fs.promises.mkdir(dirs.files, { recursive: true }),
+    fs.promises.mkdir(dirs.drafts, { recursive: true }),
+    fs.promises.mkdir(dirs.trashCurrent, { recursive: true }),
+    fs.promises.mkdir(dirs.trashPrevious, { recursive: true }),
+  ]);
+  return dirs;
+}
+
+function getPathBackupId(filePath) {
+  const normalizedPath = process.platform === "win32" ? path.resolve(filePath).toLowerCase() : path.resolve(filePath);
+  return crypto.createHash("sha256").update(normalizedPath).digest("hex");
+}
+
+function isSafeAutosaveId(id) {
+  return typeof id === "string" && /^[a-zA-Z0-9_-]{8,80}$/.test(id);
+}
+
+async function pathExists(targetPath) {
+  try {
+    await fs.promises.access(targetPath, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function removeFileIfExists(targetPath) {
+  try {
+    await fs.promises.unlink(targetPath);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+}
+
+async function removeDirIfExists(targetPath) {
+  await fs.promises.rm(targetPath, { recursive: true, force: true });
+}
+
+async function readJsonFile(targetPath) {
+  try {
+    return JSON.parse(await fs.promises.readFile(targetPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+async function readAutosaveEntry(baseDir, id) {
+  if (!isSafeAutosaveId(id)) return null;
+
+  const textPath = path.join(baseDir, `${id}.txt`);
+  const metaPath = path.join(baseDir, `${id}.json`);
+  const meta = await readJsonFile(metaPath);
+
+  try {
+    const content = await fs.promises.readFile(textPath, "utf8");
+    const stats = await fs.promises.stat(textPath);
+    return { id, content, meta: meta || {}, updatedAt: stats.mtimeMs };
+  } catch {
+    return null;
+  }
+}
+
+async function writeAutosaveEntry(baseDir, id, meta, content) {
+  if (!isSafeAutosaveId(id)) {
+    return { success: false, error: "Invalid autosave id." };
+  }
+
+  const contentText = typeof content === "string" ? content : "";
+  const contentBytes = Buffer.byteLength(contentText, "utf8");
+  const textPath = path.join(baseDir, `${id}.txt`);
+  const metaPath = path.join(baseDir, `${id}.json`);
+
+  if (contentBytes > AUTOSAVE_MAX_ITEM_BYTES) {
+    await removeFileIfExists(textPath);
+    await removeFileIfExists(metaPath);
+    return { success: true, skipped: true, reason: "too-large" };
+  }
+
+  await fs.promises.mkdir(baseDir, { recursive: true });
+  const now = Date.now();
+  const nextMeta = {
+    ...meta,
+    id,
+    contentBytes,
+    updatedAt: now,
+    createdAt: meta?.createdAt || now,
+  };
+
+  const tempTextPath = `${textPath}.${process.pid}.tmp`;
+  const tempMetaPath = `${metaPath}.${process.pid}.tmp`;
+
+  await fs.promises.writeFile(tempTextPath, contentText, "utf8");
+  await fs.promises.writeFile(tempMetaPath, JSON.stringify(nextMeta, null, 2), "utf8");
+  await fs.promises.rename(tempTextPath, textPath);
+  await fs.promises.rename(tempMetaPath, metaPath);
+
+  cleanupAutosaveStorage().catch((error) => log.warn("[autosave] cleanup failed:", error.message));
+
+  return { success: true, id };
+}
+
+async function deleteAutosaveEntry(baseDir, id) {
+  if (!isSafeAutosaveId(id)) return;
+  await Promise.all([
+    removeFileIfExists(path.join(baseDir, `${id}.txt`)),
+    removeFileIfExists(path.join(baseDir, `${id}.json`)),
+  ]);
+}
+
+async function listAutosaveEntries(baseDir) {
+  try {
+    const files = await fs.promises.readdir(baseDir);
+    const ids = files.filter((file) => file.endsWith(".txt")).map((file) => file.replace(/\.txt$/, ""));
+    const entries = await Promise.all(ids.map((id) => readAutosaveEntry(baseDir, id)));
+    return entries.filter(Boolean).sort((a, b) => a.updatedAt - b.updatedAt);
+  } catch {
+    return [];
+  }
+}
+
+async function rotateAutosaveTrash() {
+  const dirs = getAutosaveDirs();
+  await fs.promises.mkdir(dirs.root, { recursive: true });
+  await removeDirIfExists(dirs.trashPrevious);
+  if (await pathExists(dirs.trashCurrent)) {
+    await fs.promises.rename(dirs.trashCurrent, dirs.trashPrevious).catch(async () => {
+      await removeDirIfExists(dirs.trashCurrent);
+      await fs.promises.mkdir(dirs.trashPrevious, { recursive: true });
+    });
+  }
+  await ensureAutosaveDirs();
+}
+
+async function cleanupAutosaveStorage() {
+  const dirs = await ensureAutosaveDirs();
+  const fileEntries = await listAutosaveEntries(dirs.files);
+
+  for (const entry of fileEntries) {
+    const filePath = entry.meta?.path;
+    if (!filePath) {
+      await deleteAutosaveEntry(dirs.files, entry.id);
+      continue;
+    }
+
+    try {
+      const fileStats = await fs.promises.stat(filePath);
+      if (entry.updatedAt <= fileStats.mtimeMs) {
+        await deleteAutosaveEntry(dirs.files, entry.id);
+      }
+    } catch {
+      await deleteAutosaveEntry(dirs.files, entry.id);
+    }
+  }
+
+  const allDirs = [dirs.files, dirs.drafts, dirs.trashCurrent, dirs.trashPrevious];
+  const allFiles = [];
+  for (const dir of allDirs) {
+    try {
+      const names = await fs.promises.readdir(dir);
+      for (const name of names) {
+        const fullPath = path.join(dir, name);
+        const stats = await fs.promises.stat(fullPath);
+        if (stats.isFile()) allFiles.push({ path: fullPath, size: stats.size, mtimeMs: stats.mtimeMs });
+      }
+    } catch {
+      // ignore missing autosave folders
+    }
+  }
+
+  let totalSize = allFiles.reduce((sum, file) => sum + file.size, 0);
+  if (totalSize <= AUTOSAVE_MAX_TOTAL_BYTES) return;
+
+  const priority = (filePath) => {
+    if (filePath.startsWith(dirs.trashPrevious) || filePath.startsWith(dirs.trashCurrent)) return 0;
+    if (filePath.startsWith(dirs.drafts)) return 1;
+    return 2;
+  };
+
+  allFiles.sort((a, b) => priority(a.path) - priority(b.path) || a.mtimeMs - b.mtimeMs);
+  for (const file of allFiles) {
+    if (totalSize <= AUTOSAVE_MAX_TOTAL_BYTES) break;
+    await removeFileIfExists(file.path);
+    totalSize -= file.size;
+  }
+}
+
+ipcMain.handle("autosave:write", async (event, payload = {}) => {
+  try {
+    const dirs = await ensureAutosaveDirs();
+    const content = typeof payload.content === "string" ? payload.content : "";
+    const ownerId = Number.isInteger(payload.ownerId) ? payload.ownerId : null;
+
+    if (payload.kind === "file") {
+      if (!payload.filePath) return { success: false, error: "Missing file path." };
+      const id = getPathBackupId(payload.filePath);
+      return await writeAutosaveEntry(
+        dirs.files,
+        id,
+        {
+          kind: "file",
+          path: payload.filePath,
+          name: payload.name || path.basename(payload.filePath),
+          index: Number.isInteger(payload.index) ? payload.index : null,
+          ownerId,
+        },
+        content,
+      );
+    }
+
+    if (payload.kind === "draft") {
+      const id = isSafeAutosaveId(payload.draftId) ? payload.draftId : crypto.randomUUID();
+      return await writeAutosaveEntry(
+        dirs.drafts,
+        id,
+        {
+          kind: "draft",
+          name: payload.name || "Untitled.txt",
+          index: Number.isInteger(payload.index) ? payload.index : null,
+          ownerId,
+        },
+        content,
+      );
+    }
+
+    return { success: false, error: "Invalid autosave kind." };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("autosave:get-file-backup", async (event, filePath) => {
+  try {
+    if (!filePath) return { exists: false };
+
+    const dirs = await ensureAutosaveDirs();
+    const id = getPathBackupId(filePath);
+    const entry = await readAutosaveEntry(dirs.files, id);
+    if (!entry) return { exists: false };
+
+    const fileStats = await fs.promises.stat(filePath);
+    if (entry.updatedAt <= fileStats.mtimeMs) {
+      await deleteAutosaveEntry(dirs.files, id);
+      return { exists: false };
+    }
+
+    return {
+      exists: true,
+      id,
+      content: entry.content,
+      meta: entry.meta,
+      backupMtime: entry.updatedAt,
+      fileMtime: fileStats.mtimeMs,
+    };
+  } catch {
+    return { exists: false };
+  }
+});
+
+ipcMain.handle("autosave:discard-file-backup", async (event, filePath) => {
+  try {
+    if (!filePath) return { success: true };
+    const dirs = await ensureAutosaveDirs();
+    await deleteAutosaveEntry(dirs.files, getPathBackupId(filePath));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("autosave:list-drafts", async (event, payload = {}) => {
+  try {
+    const dirs = await ensureAutosaveDirs();
+    const ownerId = Number.isInteger(payload.ownerId) ? payload.ownerId : null;
+    const requesterWindow = BrowserWindow.fromWebContents(event.sender);
+    const shouldClaimRecovery =
+      !autosaveDraftRecoveryClaimed && mainWindow && requesterWindow?.id === mainWindow.id;
+    if (shouldClaimRecovery) autosaveDraftRecoveryClaimed = true;
+
+    const drafts = await listAutosaveEntries(dirs.drafts);
+    return drafts
+      .filter((entry) => {
+        if (shouldClaimRecovery) return true;
+        return ownerId !== null && entry.meta?.ownerId === ownerId;
+      })
+      .map((entry) => ({
+        id: entry.id,
+        name: entry.meta?.name || "Untitled.txt",
+        content: entry.content,
+        index: Number.isInteger(entry.meta?.index) ? entry.meta.index : null,
+        ownerId: Number.isInteger(entry.meta?.ownerId) ? entry.meta.ownerId : null,
+        updatedAt: entry.updatedAt,
+      }))
+      .sort((a, b) => {
+        const aIndex = Number.isInteger(a.index) ? a.index : Number.MAX_SAFE_INTEGER;
+        const bIndex = Number.isInteger(b.index) ? b.index : Number.MAX_SAFE_INTEGER;
+        return aIndex - bIndex || a.updatedAt - b.updatedAt;
+      });
+  } catch {
+    return [];
+  }
+});
+
+ipcMain.handle("autosave:delete-draft", async (event, draftId) => {
+  try {
+    const dirs = await ensureAutosaveDirs();
+    await deleteAutosaveEntry(dirs.drafts, draftId);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("autosave:move-draft-to-trash", async (event, payload = {}) => {
+  try {
+    const dirs = await ensureAutosaveDirs();
+    const sourceId = payload.draftId;
+    const trashId = crypto.randomUUID();
+    const content = typeof payload.content === "string" ? payload.content : "";
+    const name = payload.name || "Untitled.txt";
+    const ownerId = Number.isInteger(payload.ownerId) ? payload.ownerId : null;
+
+    if (isSafeAutosaveId(sourceId)) {
+      const source = await readAutosaveEntry(dirs.drafts, sourceId);
+      if (source) {
+        await writeAutosaveEntry(
+          dirs.trashCurrent,
+          trashId,
+          { kind: "trash", name: source.meta?.name || name, fromDraftId: sourceId, ownerId },
+          source.content,
+        );
+        await deleteAutosaveEntry(dirs.drafts, sourceId);
+        return { success: true, trashId, name: source.meta?.name || name };
+      }
+    }
+
+    if (content.trim()) {
+      await writeAutosaveEntry(
+        dirs.trashCurrent,
+        trashId,
+        { kind: "trash", name, fromDraftId: sourceId || null, ownerId },
+        content,
+      );
+      return { success: true, trashId, name };
+    }
+
+    return { success: false, error: "No draft content." };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("autosave:read-trash", async (event, trashId) => {
+  try {
+    const dirs = await ensureAutosaveDirs();
+    const entry = await readAutosaveEntry(dirs.trashCurrent, trashId);
+    if (!entry) return { exists: false };
+    return { exists: true, id: entry.id, name: entry.meta?.name || "Untitled.txt", content: entry.content };
+  } catch {
+    return { exists: false };
+  }
+});
+
+ipcMain.handle("autosave:delete-trash", async (event, trashId) => {
+  try {
+    const dirs = await ensureAutosaveDirs();
+    await deleteAutosaveEntry(dirs.trashCurrent, trashId);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("autosave:get-trash-previous-path", async () => {
+  const dirs = await ensureAutosaveDirs();
+  return dirs.trashPrevious;
 });
 
 ipcMain.handle("file:watch", (event, filePath) => {
@@ -1027,6 +1425,9 @@ if (!gotTheLock) {
       fs.mkdirSync(userThemesPath, { recursive: true });
       console.log("[INIT] Created themes folder:", userThemesPath);
     }
+    rotateAutosaveTrash()
+      .then(() => cleanupAutosaveStorage())
+      .catch((error) => log.warn("[autosave] init failed:", error.message));
 
     createWindow();
 

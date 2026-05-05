@@ -24,6 +24,12 @@ With the same core editor used in VSCode and its own language designed for text 
   - Lines wrapped in triple backticks ``` is lightly highlighted as a code block.
 - Supports [Custome CSS and Themes](https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md)
 - Syntax highlighting for Markdown.
+- Share the current note to another device with a temporary local QR/link.
+  - The text is served only from your computer on the local network, and only for a short time using an in-memory temporary page.
+  - Useful for quickly sending a draft to a phone or tablet without cloud sync.
+- Autosaves unsaved changes for crash recovery.
+  - Periodically backs up unsaved edits while you type and automatically restores them after an unexpected exit on the next open.
+  - Untitled tabs closed with "Don't Save" are kept only for the current session's reopen flow; discarded drafts from the previous session are temporarily stored in `%appdata%/monapad/autosave/trash-previous` for manual recovery.
 - Advanced Japanese word segmentation support using Kuromoji.
 
 Standard text editors can become hard to read and navigate when handling large documents. Monapad was created to solve this by offering lightweight highlighting features and heading level folding through its own language designed for text editing, without fully relying on Markdown formatting. It also allows users to use familiar VSCode-style shortcuts and editing features.
@@ -99,6 +105,7 @@ Feel free to review the source code since it is 100% open sourced.
 - [font-list](https://github.com/oldj/node-font-list)
 - [Choices.js](https://github.com/Choices-js/Choices)
 - [Kuromoji.js](https://github.com/takuyaa/kuromoji.js/)
+- [qrcode](https://github.com/soldair/node-qrcode)
 
 ## Special Thanks:
 

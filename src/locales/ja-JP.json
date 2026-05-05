@@ -34,6 +34,7 @@
     "fileAlreadyOpened": "ファイルは既に開いています！",
     "fileUpdated": "ファイルを再読み込みしました",
     "fileModified": "ファイルが外部で変更されました！",
+    "autosaveRestored": "保存されていない変更を復元しました",
     "ReloadButtonTooltip": "ファイルを再読み込み"
   },
   "deviceShare": {
@@ -42,14 +43,19 @@
     "description": "このQRコードとリンクは、同じネットワーク上でのみ、かつこのモーダルを開いている間またはリンクの期限が切れるまで利用できます。",
     "preparing": "一時リンクを準備中...",
     "copyLink": "コピー",
-    "copied": "コピー完了",
+    "copied": "コピーしました！",
     "regenerate": "再生成",
     "expired": "期限切れ",
     "close": "閉じる",
     "createError": "一時的なローカルリンクを作成できませんでした。このデバイスがネットワークに接続されているか確認してください。",
     "tooLarge": "テキストが大きすぎます。最大サイズは {{maxMb}} MB です。",
     "pageCopy": "コピー",
-    "pageCopied": "コピー完了"
+    "pageCopied": "コピーしました！"
+  },
+  "autosave": {
+    "restoreMessage": "\"{{name}}\" に保存されていない変更があります。復元しますか？",
+    "restore": "復元",
+    "discard": "破棄"
   },
   "editorMenu": {
     "cut": "切り取り",

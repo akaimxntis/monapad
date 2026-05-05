@@ -65,6 +65,10 @@ const confirmWindow = document.getElementById("confirm-save-window");
 const saveAllBtn = document.getElementById("confirm-save-all");
 const discardAllBtn = document.getElementById("confirm-discard-all");
 const cancelAllBtn = document.getElementById("confirm-cancel-all");
+const autosaveRestore = document.getElementById("autosave-restore");
+const autosaveRestoreMessage = document.getElementById("autosave-restore-message");
+const autosaveRestoreYes = document.getElementById("autosave-restore-yes");
+const autosaveRestoreNo = document.getElementById("autosave-restore-no");
 const about = document.getElementById("about");
 const fileDropBox = document.getElementById("file-drop-background");
 const fileDrop = document.getElementById("file-drop");
@@ -73,6 +77,8 @@ const deviceShareTitle = document.getElementById("device-share-title");
 const deviceShareModal = document.getElementById("device-share-modal");
 const deviceShareClose = document.getElementById("device-share-close");
 const deviceShareQr = document.getElementById("device-share-qr");
+const deviceShareQrWrap = document.getElementById("device-share-qr-wrap");
+const deviceShareUrlRow = document.getElementById("device-share-url-row");
 const deviceShareUrl = document.getElementById("device-share-url");
 const deviceShareCopy = document.getElementById("device-share-copy");
 const deviceShareRegenerate = document.getElementById("device-share-regenerate");
@@ -130,6 +136,11 @@ const WRAP_MEASURE_OPTIONS = {
   wrappingStrategy: "advanced",
   disableMonospaceOptimizations: true,
 };
+const AUTOSAVE_DEBOUNCE_MS = 3000;
+const AUTOSAVE_FORCE_MS = 30000;
+const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
+const autosaveTimers = new Map();
+let isRestoringAutosaveDrafts = false;
 
 // tabs hover state, width handling
 let tabAreaHovered = false;
@@ -156,8 +167,13 @@ let currentWatchedCssFile = null;
 
 // get window id
 let myWindowId = null;
+let resolveWindowIdReady = null;
+const windowIdReady = new Promise((resolve) => {
+  resolveWindowIdReady = resolve;
+});
 window.electronAPI.onAssignWindowId((id) => {
   myWindowId = id;
+  resolveWindowIdReady?.(id);
 });
 
 window.electronAPI.onShowExternalDropIndicator(({ dropScreenX, dropScreenY }) => {
@@ -215,7 +231,7 @@ function getTabInsertIndexByScreenX(screenX) {
 }
 
 // receive data on open in new window
-window.electronAPI.onLoadTabData((receivedTabData) => {
+window.electronAPI.onLoadTabData(async (receivedTabData) => {
   hideDropIndicator();
   const payload = receivedTabData.tabInfo || receivedTabData;
 
@@ -236,11 +252,15 @@ window.electronAPI.onLoadTabData((receivedTabData) => {
   newTabData.fontSize = payload.fontSize;
   newTabData.wordWrap = payload.wordWrap;
   newTabData.isMarkdown = payload.isMarkdown;
+  newTabData.draftId = payload.draftId || newTabData.draftId;
 
   // restore save state
   if (!payload.isFileSaved) {
     const close = newTabData.element.querySelector(".close");
     if (close) close.classList.add("show-unsaved");
+    await windowIdReady;
+    await writeTabAutosave(newTabData, newTabData.model.getValue());
+    scheduleTabAutosave(newTabData, newTabData.model.getValue());
   }
 
   if (payload.hasReloadButton) {
@@ -308,6 +328,7 @@ function updateMenuLabels() {
   document.getElementById("file-opened").textContent = i18next.t("message.fileAlreadyOpened");
   document.getElementById("file-updated").textContent = i18next.t("message.fileUpdated");
   document.getElementById("file-modified").textContent = i18next.t("message.fileModified");
+  document.getElementById("autosave-restored").textContent = i18next.t("message.autosaveRestored");
 
   // device share modal
   if (deviceShareBtn) deviceShareBtn.title = i18next.t("deviceShare.tooltip");
@@ -370,6 +391,9 @@ function updateMenuLabels() {
   document.getElementById("confirm-save-all").innerHTML = i18next.t("modal.saveAll");
   document.getElementById("confirm-discard-all").innerHTML = i18next.t("modal.discardAll");
   document.getElementById("confirm-cancel-all").innerHTML = i18next.t("modal.cancel");
+  if (autosaveRestoreMessage) autosaveRestoreMessage.textContent = i18next.t("autosave.restoreMessage");
+  if (autosaveRestoreYes) autosaveRestoreYes.textContent = i18next.t("autosave.restore");
+  if (autosaveRestoreNo) autosaveRestoreNo.textContent = i18next.t("autosave.discard");
   // document.getElementById("description").textContent = i18next.t("modal.description");
   document.getElementById("discordServer").textContent = i18next.t("modal.discordServer");
   document.getElementById("website").textContent = i18next.t("modal.website");
@@ -1241,6 +1265,243 @@ function normalizeTextForModelComparison(text) {
   return (typeof text === "string" ? text : "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
 
+function createAutosaveId() {
+  const id = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `w${myWindowId || "pending"}_${id}`;
+}
+
+function getTabAutosaveKey(tab) {
+  if (!tab) return null;
+  if (tab.path) return `file:${tab.path}`;
+  return tab.draftId ? `draft:${tab.draftId}` : null;
+}
+
+function clearAutosaveTimer(tab) {
+  const key = getTabAutosaveKey(tab);
+  if (!key) return;
+
+  const timer = autosaveTimers.get(key);
+  if (!timer) return;
+
+  clearTimeout(timer.debounceId);
+  if (timer.forceId) clearTimeout(timer.forceId);
+  autosaveTimers.delete(key);
+}
+
+function shouldAutosaveTab(tab, content = null) {
+  if (!tab || tab._autosaveDisabled) return false;
+  const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
+  if (!nextContent.trim()) return false;
+  if (!hasUnsavedChanges(tab, nextContent)) return false;
+  return new Blob([nextContent]).size <= AUTOSAVE_MAX_ITEM_BYTES;
+}
+
+async function writeTabAutosave(tab, content = null) {
+  if (!tab) return;
+  const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
+  if (!shouldAutosaveTab(tab, nextContent)) return;
+
+  try {
+    if (tab.path) {
+      await window.electronAPI.writeAutosave({
+        kind: "file",
+        filePath: tab.path,
+        name: tab.name,
+        index: tabData.indexOf(tab),
+        ownerId: myWindowId,
+        content: nextContent,
+      });
+    } else {
+      if (!tab.draftId) tab.draftId = createAutosaveId();
+      await window.electronAPI.writeAutosave({
+        kind: "draft",
+        draftId: tab.draftId,
+        name: tab.name,
+        index: tabData.indexOf(tab),
+        ownerId: myWindowId,
+        content: nextContent,
+      });
+    }
+  } catch (error) {
+    console.warn("Failed to write autosave:", error);
+  }
+}
+
+function scheduleTabAutosave(tab, content = null) {
+  if (!tab) return;
+  const key = getTabAutosaveKey(tab);
+  if (!key) return;
+  const existingTimer = autosaveTimers.get(key);
+
+  if (!shouldAutosaveTab(tab, content)) {
+    clearAutosaveTimer(tab);
+    return;
+  }
+
+  if (existingTimer?.debounceId) clearTimeout(existingTimer.debounceId);
+
+  const debounceId = setTimeout(async () => {
+    const timer = autosaveTimers.get(key);
+    if (timer?.forceId) clearTimeout(timer.forceId);
+    autosaveTimers.delete(key);
+    await writeTabAutosave(tab);
+  }, AUTOSAVE_DEBOUNCE_MS);
+
+  const forceId =
+    existingTimer?.forceId ||
+    setTimeout(async () => {
+      const timer = autosaveTimers.get(key);
+      if (!timer) return;
+      clearTimeout(timer.debounceId);
+      autosaveTimers.delete(key);
+      await writeTabAutosave(tab);
+    }, AUTOSAVE_FORCE_MS);
+
+  autosaveTimers.set(key, { debounceId, forceId });
+}
+
+function scheduleAllUnsavedTabAutosaves() {
+  for (const tab of tabData) {
+    scheduleTabAutosave(tab, tab.model?.getValue() ?? tab.content ?? "");
+  }
+}
+
+async function deleteTabAutosave(tab) {
+  if (!tab) return;
+  clearAutosaveTimer(tab);
+
+  try {
+    if (tab.path) {
+      await window.electronAPI.discardFileAutosaveBackup(tab.path);
+    } else if (tab.draftId) {
+      await window.electronAPI.deleteAutosaveDraft(tab.draftId);
+    }
+  } catch (error) {
+    console.warn("Failed to delete autosave:", error);
+  }
+}
+
+async function cleanupSavedTabAutosaves(tabsToCleanup = tabData) {
+  for (const tab of tabsToCleanup) {
+    const content = tab?.model?.getValue() ?? tab?.content ?? "";
+    if (!hasUnsavedChanges(tab, content)) {
+      await deleteTabAutosave(tab);
+    }
+  }
+}
+
+async function restoreAutosaveDrafts() {
+  if (isRestoringAutosaveDrafts) return;
+  isRestoringAutosaveDrafts = true;
+
+  try {
+    const ownerId = await windowIdReady;
+    const drafts = await window.electronAPI.listAutosaveDrafts({ ownerId });
+    if (!Array.isArray(drafts) || drafts.length === 0) return;
+
+    if (tabData.length === 1 && !tabData[0].path && !tabData[0].model?.getValue()?.trim()) {
+      const emptyTab = tabData[0];
+      tabs.removeChild(emptyTab.element);
+      emptyTab.model?.dispose();
+      tabData = [];
+      currentTab = null;
+    }
+
+    for (const draft of drafts) {
+      if (!draft?.content?.trim()) {
+        await window.electronAPI.deleteAutosaveDraft(draft.id);
+        continue;
+      }
+
+      const newTabData = createTab(draft.name, "", null);
+      newTabData.draftId = draft.id;
+      applyRestoredAutosaveContent(newTabData, "", draft.content);
+    }
+
+    if (tabData.length > 0) {
+      switchTab(tabData[0]);
+      setTimeout(() => monacoEditor?.focus(), 0);
+      showMessage("autosave-restored");
+    }
+  } catch (error) {
+    console.warn("Failed to restore autosave drafts:", error);
+  } finally {
+    isRestoringAutosaveDrafts = false;
+  }
+}
+
+function confirmAutosaveRestore(fileName) {
+  return new Promise((resolve) => {
+    if (!autosaveRestore || !autosaveRestoreYes || !autosaveRestoreNo) {
+      resolve(false);
+      return;
+    }
+
+    autosaveRestoreMessage.textContent = i18next.t("autosave.restoreMessage", { name: fileName });
+    confirmBox.style.display = "flex";
+    autosaveRestore.style.display = "flex";
+    isModalDisplayed = true;
+
+    const close = (restore) => {
+      confirmBox.style.display = "none";
+      autosaveRestore.style.display = "none";
+      isModalDisplayed = false;
+      autosaveRestoreYes.removeEventListener("click", onRestore);
+      autosaveRestoreNo.removeEventListener("click", onDiscard);
+      window.removeEventListener("keydown", onKeyDown);
+      resolve(restore);
+    };
+
+    const onRestore = () => close(true);
+    const onDiscard = () => close(false);
+    const onKeyDown = (e) => {
+      if (!isModalDisplayed) return;
+      const key = (e.key || "").toLowerCase();
+      if (e.code === "Enter" || e.code === "KeyR" || key === "r") {
+        e.preventDefault();
+        close(true);
+      } else if (e.code === "Escape" || e.code === "KeyD" || key === "d" || key === "escape") {
+        e.preventDefault();
+        close(false);
+      }
+    };
+
+    autosaveRestoreYes.addEventListener("click", onRestore);
+    autosaveRestoreNo.addEventListener("click", onDiscard);
+    window.addEventListener("keydown", onKeyDown);
+  });
+}
+
+function applyRestoredAutosaveContent(tab, savedContent, restoredContent) {
+  if (!tab?.model) return;
+
+  tab._ignoreUnsavedCheck = true;
+  tab.model.setValue(savedContent);
+  tab.content = savedContent;
+  tab.originalContent = savedContent;
+  tab.isFileSaved = true;
+
+  const fullRange = tab.model.getFullModelRange();
+  tab.model.pushStackElement();
+  tab.model.pushEditOperations(
+    [],
+    [
+      {
+        range: fullRange,
+        text: restoredContent,
+      },
+    ],
+    () => null,
+  );
+  tab.model.pushStackElement();
+
+  const modelContent = tab.model.getValue();
+  tab.content = modelContent;
+  tab._ignoreUnsavedCheck = false;
+  syncTabSaveState(tab, modelContent);
+  scheduleTabAutosave(tab, modelContent);
+}
+
 function updateDeviceShareButtonState() {
   if (!deviceShareBtn) return;
 
@@ -1263,6 +1524,7 @@ monacoEditor.onDidChangeModelContent(() => {
   }
 
   syncTabSaveState(active, currentContent);
+  scheduleTabAutosave(active, currentContent);
 
   updateStatusBar();
   updateDeviceShareButtonState();
@@ -2155,6 +2417,11 @@ function setDeviceShareCopyButtonCopied() {
   deviceShareCopyResetTimer = setTimeout(resetDeviceShareCopyButton, 1200);
 }
 
+function setDeviceShareLinkContentVisible(visible) {
+  if (deviceShareQrWrap) deviceShareQrWrap.style.display = visible ? "flex" : "none";
+  if (deviceShareUrlRow) deviceShareUrlRow.style.display = visible ? "flex" : "none";
+}
+
 function resetDeviceShareModal() {
   deviceShareQr.removeAttribute("src");
   deviceShareUrl.value = "";
@@ -2166,6 +2433,7 @@ function resetDeviceShareModal() {
   deviceShareExpiresAt = null;
   deviceShareRegenerate.disabled = true;
   deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
+  setDeviceShareLinkContentVisible(true);
 }
 
 function getDeviceShareErrorMessage(result) {
@@ -2199,6 +2467,7 @@ async function createDeviceShareLink() {
   }
 
   deviceShareDescription.textContent = i18next.t("deviceShare.preparing");
+  setDeviceShareLinkContentVisible(false);
   deviceShareRegenerate.disabled = true;
   deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
   resetDeviceShareCopyButton();
@@ -2234,6 +2503,7 @@ async function createDeviceShareLink() {
       light: getCSSVar("--color1") || "#000000",
     },
   });
+  setDeviceShareLinkContentVisible(true);
   deviceShareDescription.textContent = i18next.t("deviceShare.description");
   startDeviceShareCountdown(result.expiresAt);
 }
@@ -2656,6 +2926,7 @@ function enableTabDragging(tab, data) {
         draggingTab.style.transform = `translateX(${currentX}px)`;
 
         [tabData[dragIndex], tabData[i]] = [tabData[i], tabData[dragIndex]];
+        scheduleAllUnsavedTabAutosaves();
         dragIndex = i;
         startX = e.clientX - currentX;
 
@@ -2674,6 +2945,7 @@ function enableTabDragging(tab, data) {
         draggingTab.style.transform = `translateX(${currentX}px)`;
 
         [tabData[dragIndex], tabData[i]] = [tabData[i], tabData[dragIndex]];
+        scheduleAllUnsavedTabAutosaves();
         dragIndex = i;
         startX = e.clientX - currentX;
 
@@ -2749,8 +3021,9 @@ function enableTabDragging(tab, data) {
     // get window id from cursor position
     window.electronAPI
       .getWindowIdAt({ x: e.screenX, y: e.screenY })
-      .then((targetWindowId) => {
+      .then(async (targetWindowId) => {
         if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow) {
+          await writeTabAutosave(releasedTabData);
           // send tab to window on drop
           const tabInfo = {
             name: releasedTabData.name,
@@ -2761,6 +3034,7 @@ function enableTabDragging(tab, data) {
             fontSize: releasedTabData.fontSize,
             wordWrap: releasedTabData.wordWrap,
             isMarkdown: releasedTabData.isMarkdown,
+            draftId: releasedTabData.draftId,
             hasReloadButton: releasedTabData.element?.classList.contains("has-reload-button"),
           };
           window.electronAPI
@@ -2845,6 +3119,7 @@ document.addEventListener("mouseup", (e) => {
 
 async function openTabInNewWindow(targetTabData, position) {
   if (!targetTabData) return;
+  await writeTabAutosave(targetTabData);
 
   const tabInfo = {
     name: targetTabData.name,
@@ -2855,6 +3130,7 @@ async function openTabInNewWindow(targetTabData, position) {
     fontSize: targetTabData.fontSize,
     wordWrap: targetTabData.wordWrap,
     isMarkdown: targetTabData.isMarkdown,
+    draftId: targetTabData.draftId,
     hasReloadButton: targetTabData.element?.classList.contains("has-reload-button"),
   };
 
@@ -2866,8 +3142,10 @@ function removeTabAndAdjustUI(targetTabData) {
   const index = tabData.indexOf(targetTabData);
   if (index === -1) return;
 
+  clearAutosaveTimer(targetTabData);
   tabs.removeChild(targetTabData.element);
   tabData.splice(index, 1);
+  scheduleAllUnsavedTabAutosaves();
 
   const isActive = targetTabData.element.classList.contains("active");
 
@@ -2961,6 +3239,7 @@ function createTab(name, content = "", path = null, insertIndex = null) {
     isWarned: false,
     originalContent: content,
     _lastExternalContent: path ? content : null,
+    draftId: path ? null : createAutosaveId(),
   };
 
   if (insertIndex !== null && insertIndex >= 0 && insertIndex < tabData.length) {
@@ -3034,7 +3313,7 @@ function createTab(name, content = "", path = null, insertIndex = null) {
 
 // close tab
 async function attemptCloseTab(data) {
-  return new Promise((resolve) => {
+  return new Promise(async (resolve) => {
     const tab = data.element;
 
     if (!data.isFileSaved) {
@@ -3045,17 +3324,30 @@ async function attemptCloseTab(data) {
       confirmSave.style.display = "flex";
       isModalDisplayed = true;
 
-      const actuallyCloseTab = () => {
+      const actuallyCloseTab = async (options = {}) => {
+        const tabIndex = tabData.indexOf(data);
         if (data.path) {
-          const tabIndex = tabData.indexOf(data);
           addToRecentlyClosedFiles(data.path, tabIndex);
+          if (options.discardUnsaved) await window.electronAPI.discardFileAutosaveBackup(data.path);
+        } else if (options.discardUnsaved && data.model?.getValue()?.trim()) {
+          const trash = await window.electronAPI.moveAutosaveDraftToTrash({
+            draftId: data.draftId,
+            name: data.name,
+            ownerId: myWindowId,
+            content: data.model.getValue(),
+          });
+          if (trash?.success) addToRecentlyClosedTrash(trash.trashId, trash.name || data.name, tabIndex);
+        } else {
+          await deleteTabAutosave(data);
         }
+        clearAutosaveTimer(data);
 
         const index = tabData.indexOf(data);
         tabs.removeChild(tab);
         updateTabsCompactClass();
         if (data.model) data.model.dispose();
         tabData = tabData.filter((t) => t !== data);
+        scheduleAllUnsavedTabAutosaves();
         syncRecentlyClosedFilesState();
 
         if (tab.classList.contains("active")) {
@@ -3112,7 +3404,7 @@ async function attemptCloseTab(data) {
         }
 
         if (success !== false) {
-          actuallyCloseTab();
+          await actuallyCloseTab();
           resolve("closed");
         } else {
           resolve("cancelled");
@@ -3121,11 +3413,11 @@ async function attemptCloseTab(data) {
         removeListeners();
       };
 
-      const onDontSave = () => {
+      const onDontSave = async () => {
         confirmBox.style.display = "none";
         confirmSave.style.display = "none";
         isModalDisplayed = false;
-        actuallyCloseTab();
+        await actuallyCloseTab({ discardUnsaved: true });
         removeListeners();
         resolve("closed");
       };
@@ -3166,11 +3458,16 @@ async function attemptCloseTab(data) {
       const tabIndex = tabData.indexOf(data);
       addToRecentlyClosedFiles(data.path, tabIndex);
     }
+    clearAutosaveTimer(data);
+    if (!data.path) {
+      await deleteTabAutosave(data);
+    }
     const index = tabData.indexOf(data);
     tabs.removeChild(tab);
     updateTabsCompactClass();
     if (data.model) data.model.dispose();
     tabData = tabData.filter((t) => t !== data);
+    scheduleAllUnsavedTabAutosaves();
     syncRecentlyClosedFilesState();
 
     if (tab.classList.contains("active")) {
@@ -3213,8 +3510,20 @@ async function attemptCloseTab(data) {
 function addToRecentlyClosedFiles(filePath, tabIndex) {
   if (!filePath) return;
 
-  recentlyClosedFiles = recentlyClosedFiles.filter((item) => item.path !== filePath);
-  recentlyClosedFiles.unshift({ path: filePath, index: tabIndex });
+  recentlyClosedFiles = recentlyClosedFiles.filter((item) => item.type !== "file" || item.path !== filePath);
+  recentlyClosedFiles.unshift({ type: "file", path: filePath, index: tabIndex });
+  if (recentlyClosedFiles.length > 10) {
+    recentlyClosedFiles = recentlyClosedFiles.slice(0, 10);
+  }
+
+  updateReopenClosedTabButtonState();
+}
+
+function addToRecentlyClosedTrash(trashId, name, tabIndex) {
+  if (!trashId) return;
+
+  recentlyClosedFiles = recentlyClosedFiles.filter((item) => item.type !== "trash" || item.trashId !== trashId);
+  recentlyClosedFiles.unshift({ type: "trash", trashId, name, index: tabIndex });
   if (recentlyClosedFiles.length > 10) {
     recentlyClosedFiles = recentlyClosedFiles.slice(0, 10);
   }
@@ -3230,10 +3539,18 @@ function updateReopenClosedTabButtonState() {
 function syncRecentlyClosedFilesState() {
   const openPaths = new Set(tabData.map((tab) => tab.path).filter(Boolean));
   const seenPaths = new Set();
+  const seenTrashIds = new Set();
 
   recentlyClosedFiles = recentlyClosedFiles.filter((item) => {
-    if (!item?.path || openPaths.has(item.path) || seenPaths.has(item.path)) return false;
-    seenPaths.add(item.path);
+    if (item?.type === "trash") {
+      if (!item.trashId || seenTrashIds.has(item.trashId)) return false;
+      seenTrashIds.add(item.trashId);
+      return true;
+    }
+
+    const filePath = item?.path;
+    if (!filePath || openPaths.has(filePath) || seenPaths.has(filePath)) return false;
+    seenPaths.add(filePath);
     return true;
   });
 
@@ -3245,7 +3562,43 @@ async function reopenRecentlyClosedFile() {
   syncRecentlyClosedFilesState();
 
   while (recentlyClosedFiles.length > 0) {
-    const { path: filePath, index: originalIndex } = recentlyClosedFiles.shift();
+    const item = recentlyClosedFiles.shift();
+    const { path: filePath, index: originalIndex } = item;
+
+    if (item.type === "trash") {
+      const trash = await window.electronAPI.readAutosaveTrash(item.trashId);
+      if (!trash?.exists) continue;
+
+      let restoredTab = null;
+      if (tabData.length === 1 && !tabData[0].path && !tabData[0].model?.getValue()?.trim()) {
+        restoredTab = tabData[0];
+        await deleteTabAutosave(restoredTab);
+        restoredTab.name = trash.name;
+        restoredTab.draftId = createAutosaveId();
+        restoredTab.isWarned = false;
+        restoredTab.isMarkdown = false;
+
+        const nameSpan = restoredTab.element.querySelector(".name");
+        if (nameSpan) {
+          nameSpan.textContent = restoredTab.name;
+          nameSpan.title = restoredTab.name;
+          nameSpan.classList.remove("warn");
+        }
+        reloadButton(restoredTab, null, "remove");
+      } else {
+        const restoreIndex = Math.min(originalIndex, tabData.length);
+        restoredTab = createTab(trash.name, "", null, restoreIndex);
+        restoredTab.draftId = createAutosaveId();
+      }
+
+      applyRestoredAutosaveContent(restoredTab, "", trash.content);
+      switchTab(restoredTab);
+      scheduleTabAutosave(restoredTab, restoredTab.content);
+      await window.electronAPI.deleteAutosaveTrash(item.trashId);
+      syncRecentlyClosedFilesState();
+      return;
+    }
+
     const existingTab = tabData.find((tab) => tab.path === filePath);
 
     if (existingTab) {
@@ -3266,9 +3619,10 @@ async function reopenRecentlyClosedFile() {
 }
 
 // close window
-function attemptCloseWindow() {
+async function attemptCloseWindow() {
   const hasUnsavedTabs = tabData.some((tab) => !tab.isFileSaved);
   if (!hasUnsavedTabs) {
+    await cleanupSavedTabAutosaves();
     window.electronAPI.closeWindow();
     return;
   }
@@ -3317,6 +3671,7 @@ function attemptCloseWindow() {
       // close saved tab
       const index = tabData.indexOf(tab);
       if (index !== -1) {
+        await deleteTabAutosave(tab);
         tabs.removeChild(tab.element);
         tabData.splice(index, 1);
       }
@@ -3332,12 +3687,29 @@ function attemptCloseWindow() {
     }
   };
 
-  const onDiscardAll = () => {
+  const onDiscardAll = async () => {
     closeConfirm();
     removeListeners();
 
     // close all tabs
     for (const tab of [...tabData]) {
+      clearAutosaveTimer(tab);
+      if (!tab.isFileSaved) {
+        if (tab.path) {
+          await window.electronAPI.discardFileAutosaveBackup(tab.path);
+        } else if (tab.model?.getValue()?.trim()) {
+          await window.electronAPI.moveAutosaveDraftToTrash({
+            draftId: tab.draftId,
+            name: tab.name,
+            ownerId: myWindowId,
+            content: tab.model.getValue(),
+          });
+        } else {
+          await deleteTabAutosave(tab);
+        }
+      } else {
+        await deleteTabAutosave(tab);
+      }
       tabs.removeChild(tab.element);
     }
     tabData = [];
@@ -3604,15 +3976,25 @@ async function loadFileByPath(filePath, insertIndex = null) {
     return;
   }
 
+  const fileName = filePath.split(/[/\\]/).pop();
+  const autosaveBackup = await window.electronAPI.getFileAutosaveBackup(filePath);
+  const shouldRestoreAutosave = autosaveBackup?.exists ? await confirmAutosaveRestore(fileName) : false;
+
+  if (autosaveBackup?.exists && !shouldRestoreAutosave) {
+    await window.electronAPI.discardFileAutosaveBackup(filePath);
+  }
+
   const isMarkdownFile = /\.(md|markdown)$/i.test(filePath);
 
   if (tabData.length === 1) {
     const singleTab = tabData[0];
     const currentContent = monacoEditor ? monacoEditor.getValue() : "";
     if (!singleTab.content.trim() && !currentContent.trim()) {
-      singleTab.name = filePath.split(/[/\\]/).pop();
+      await deleteTabAutosave(singleTab);
+      singleTab.name = fileName;
       singleTab._lastExternalContent = content;
       singleTab.path = filePath;
+      singleTab.draftId = null;
       singleTab.isFileSaved = true;
       singleTab.isMarkdown = isMarkdownFile;
       singleTab.isWarned = false;
@@ -3634,6 +4016,10 @@ async function loadFileByPath(filePath, insertIndex = null) {
       singleTab.content = modelContent;
       singleTab.originalContent = modelContent;
       singleTab.isFileSaved = true;
+      if (shouldRestoreAutosave) {
+        applyRestoredAutosaveContent(singleTab, modelContent, autosaveBackup.content);
+        showMessage("autosave-restored");
+      }
       switchTab(singleTab);
       updateRecentFiles(filePath);
       syncRecentlyClosedFilesState();
@@ -3650,17 +4036,22 @@ async function loadFileByPath(filePath, insertIndex = null) {
     targetIndex = Math.max(0, targetIndex);
   }
 
-  const newTabData = createTab(filePath.split(/[/\\]/).pop(), content, filePath, targetIndex);
+  const newTabData = createTab(fileName, content, filePath, targetIndex);
   const modelContent = newTabData.model.getValue();
   newTabData.content = modelContent;
   newTabData.originalContent = modelContent;
   newTabData._lastExternalContent = content;
+  newTabData.draftId = null;
   newTabData.isFileSaved = true;
   newTabData.isMarkdown = isMarkdownFile;
   newTabData.isWarned = false;
+  if (shouldRestoreAutosave) {
+    applyRestoredAutosaveContent(newTabData, modelContent, autosaveBackup.content);
+    showMessage("autosave-restored");
+  }
 
   const newTabClose = newTabData.element.querySelector(".close");
-  if (newTabClose) newTabClose.classList.remove("show-unsaved");
+  if (newTabClose) newTabClose.classList.toggle("show-unsaved", shouldRestoreAutosave);
   newTabData.element.querySelector(".name")?.classList.remove("warn");
   reloadButton(newTabData, null, "remove");
 
@@ -3784,8 +4175,13 @@ async function saveAsFile() {
   if (!active || !monacoEditor) return;
 
   const content = monacoEditor.getValue();
+  const previousDraftId = active.draftId;
+  clearAutosaveTimer(active);
   const { filePath } = await window.electronAPI.showSaveDialog(active.name);
-  if (!filePath) return false;
+  if (!filePath) {
+    scheduleTabAutosave(active, content);
+    return false;
+  }
 
   const result = await window.electronAPI.saveToFile(filePath, content);
   if (result.success) {
@@ -3796,6 +4192,10 @@ async function saveAsFile() {
     active.originalContent = content;
     active.isFileSaved = true;
     active._lastExternalContent = content;
+    active.draftId = null;
+    clearAutosaveTimer(active);
+    if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
+    await window.electronAPI.discardFileAutosaveBackup(filePath);
 
     currentFilePath = filePath;
     updateStatusBar();
@@ -3838,6 +4238,8 @@ async function saveFile() {
     active.originalContent = content;
     active.isFileSaved = true;
     active._lastExternalContent = content;
+    clearAutosaveTimer(active);
+    await window.electronAPI.discardFileAutosaveBackup(active.path);
 
     const activeSaveClose = active.element.querySelector(".close");
     if (activeSaveClose) activeSaveClose.classList.remove("show-unsaved");
@@ -3862,6 +4264,9 @@ function syncTabSaveState(tab, content = null) {
 
   const hasChanges = hasUnsavedChanges(tab, content);
   tab.isFileSaved = !hasChanges;
+  if (!hasChanges) {
+    deleteTabAutosave(tab);
+  }
 
   const close = tab.element?.querySelector(".close");
   if (close) {
@@ -3920,6 +4325,8 @@ window.electronAPI.onWindowFocus((focused) => {
   }
 });
 
+restoreAutosaveDrafts();
+
 // Tab context menu handler
 document.addEventListener("contextmenu", async (e) => {
   const tabElement = e.target.closest(".tab");
@@ -3934,8 +4341,16 @@ document.addEventListener("contextmenu", async (e) => {
   // update reopen closed tab button
   const validItems = [];
   for (const item of recentlyClosedFiles) {
-    const exists = await window.electronAPI.fileExists(item.path);
-    if (exists) validItems.push(item);
+    if (item?.type === "trash") {
+      const trash = await window.electronAPI.readAutosaveTrash(item.trashId);
+      if (trash?.exists) validItems.push(item);
+      continue;
+    }
+
+    if (item?.path) {
+      const exists = await window.electronAPI.fileExists(item.path);
+      if (exists) validItems.push(item);
+    }
   }
   if (validItems.length !== recentlyClosedFiles.length) {
     recentlyClosedFiles = validItems;
