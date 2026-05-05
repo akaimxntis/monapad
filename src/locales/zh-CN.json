@@ -36,6 +36,21 @@
     "fileModified": "文件已被外部程序修改！",
     "ReloadButtonTooltip": "重新加载文件"
   },
+  "deviceShare": {
+    "title": "共享到其他设备",
+    "tooltip": "共享到其他设备",
+    "description": "此二维码和链接仅在同一网络下可用，并且仅在此弹窗打开期间或链接过期前有效。",
+    "preparing": "正在准备临时链接...",
+    "copyLink": "复制",
+    "copied": "已复制！",
+    "regenerate": "重新生成",
+    "expired": "已过期！",
+    "close": "关闭",
+    "createError": "无法创建临时本地链接。请检查此设备是否已连接到网络。",
+    "tooLarge": "文本过大。最大大小为 {{maxMb}} MB。",
+    "pageCopy": "复制",
+    "pageCopied": "已复制！"
+  },
   "editorMenu": {
     "cut": "剪切",
     "copy": "复制",

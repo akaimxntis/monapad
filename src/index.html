@@ -827,12 +827,45 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 0 10px;
+        padding: 0 10px 0 0;
         box-sizing: border-box;
         color: var(--grayOut);
         user-select: none;
         min-width: 0;
         border-top: 1px solid var(--color3);
+      }
+      #status-left-group {
+        height: 100%;
+        display: flex;
+        align-items: center;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        gap: 6px;
+      }
+      #device-share-btn {
+        width: 40px;
+        height: 100%;
+        background: var(--color2);
+        border: none;
+        color: var(--grayOut);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        padding: 0 0 0 2px;
+      }
+      #device-share-btn svg {
+        margin-top: -2px;
+      }
+      #device-share-btn:disabled {
+        color: var(--grayOut);
+        cursor: default;
+        opacity: 0.45;
+      }
+      #device-share-btn:not(:disabled):hover {
+        background: var(--color3);
       }
       #status-left {
         line-height: 25px;
@@ -1044,6 +1077,110 @@
         border: none;
         cursor: pointer;
         margin-top: 15px;
+      }
+      #device-share-modal {
+        --device-share-qr-size: clamp(110px, min(220px, calc(100vw - 124px), calc(100vh - 270px)), 220px);
+        display: none;
+        flex-direction: column;
+        width: min(calc(100vw - 48px), 420px);
+        max-height: calc(100vh - 48px);
+        padding: 18px;
+        background: var(--color1);
+        color: var(--editorText);
+        border: solid 1px var(--color3);
+        font-size: 14px;
+        overflow: hidden;
+      }
+      #device-share-title {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 400;
+        line-height: 1.3;
+        text-align: center;
+      }
+      #device-share-actions {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-top: 16px;
+      }
+      #device-share-close,
+      #device-share-regenerate {
+        height: 32px;
+        padding: 0 12px;
+        border: none;
+        background: var(--color3);
+        color: var(--editorText);
+        cursor: pointer;
+      }
+      #device-share-regenerate {
+        min-width: 150px;
+      }
+      #device-share-regenerate:disabled {
+        color: var(--grayOut);
+        cursor: default;
+        opacity: 0.65;
+      }
+      #device-share-expired {
+        color: var(--warn);
+      }
+      #device-share-close:hover,
+      #device-share-copy:hover,
+      #device-share-regenerate:not(:disabled):hover {
+        background: color-mix(in srgb, white 10%, var(--color3) 90%);
+      }
+      #device-share-qr-wrap {
+        display: flex;
+        justify-content: center;
+        margin: 12px auto;
+        width: var(--device-share-qr-size);
+        height: var(--device-share-qr-size);
+        max-width: 100%;
+        box-sizing: border-box;
+        flex: 0 0 var(--device-share-qr-size);
+      }
+      #device-share-qr {
+        width: var(--device-share-qr-size);
+        height: var(--device-share-qr-size);
+        max-width: 100%;
+        object-fit: contain;
+        image-rendering: pixelated;
+      }
+      #device-share-url-row {
+        display: flex;
+        gap: 8px;
+      }
+      #device-share-url {
+        flex: 1;
+        min-width: 0;
+        height: 32px;
+        padding: 0 8px;
+        border: solid 1px var(--color3);
+        background: var(--color2);
+        color: var(--editorText);
+        font: inherit;
+        box-sizing: border-box;
+      }
+      #device-share-copy {
+        min-width: 80px;
+        height: 32px;
+        padding: 0 12px;
+        border: none;
+        background: var(--color3);
+        color: var(--editorText);
+        cursor: pointer;
+      }
+      #device-share-description,
+      #device-share-error {
+        margin: 12px 0 0;
+        color: var(--grayOut);
+        line-height: 1.5;
+        text-align: center;
+      }
+      #device-share-error {
+        display: none;
+        color: var(--highlight);
+        word-break: break-word;
       }
       #custom-context-menu.menu,
       #tab-context-menu.menu {
@@ -1463,7 +1600,30 @@
 
       <!-- status bar -->
       <div id="status-bar" style="display: none">
-        <div id="status-left"></div>
+        <div id="status-left-group">
+          <button id="device-share-btn" title="Share to other devices">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              class="icon icon-tabler icons-tabler-outline icon-tabler-focus-centered"
+            >
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M4 8v-2a2 2 0 0 1 2 -2h2" />
+              <path d="M4 16v2a2 2 0 0 0 2 2h2" />
+              <path d="M16 4h2a2 2 0 0 1 2 2v2" />
+              <path d="M16 20h2a2 2 0 0 0 2 -2v-2" />
+              <path d="M5 12l14 0" />
+            </svg>
+          </button>
+          <div id="status-left"></div>
+        </div>
         <div id="status-right">
           <span id="line-col"></span>
           <span id="zoom-level"></span>
@@ -1875,6 +2035,28 @@
           </div>
           <div id="about-footer">
             <button id="about-close">OK</button>
+          </div>
+        </div>
+        <!-- device share -->
+        <div id="device-share-modal">
+          <div id="device-share-header">
+            <h1 id="device-share-title">Share to other devices</h1>
+          </div>
+          <div id="device-share-qr-wrap">
+            <img id="device-share-qr" alt="QR code" />
+          </div>
+          <div id="device-share-url-row">
+            <input id="device-share-url" type="text" readonly />
+            <button id="device-share-copy" type="button">Copy</button>
+          </div>
+          <p id="device-share-description">
+            This QR code and link work only on the same network, and only while this modal is open or until the link
+            expires.
+          </p>
+          <p id="device-share-error"></p>
+          <div id="device-share-actions">
+            <button id="device-share-regenerate" type="button" disabled>Regenerate</button>
+            <button id="device-share-close" type="button">Close</button>
           </div>
         </div>
       </div>

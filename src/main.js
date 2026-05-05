@@ -3,6 +3,9 @@ const { autoUpdater } = require("electron-updater");
 const { getFonts } = require("font-list");
 const path = require("path");
 const fs = require("fs");
+const http = require("http");
+const os = require("os");
+const crypto = require("crypto");
 const Store = require("electron-store").default;
 const log = require("electron-log");
 const logDir = path.dirname(log.transports.file.getFile().path);
@@ -21,6 +24,15 @@ let filePathToOpen = null;
 let cursorWindow = null;
 let kuromojiTokenizer = null;
 let kuromojiInitPromise = null;
+let mobileShareServer = null;
+let mobileShareHost = null;
+let mobileSharePort = null;
+let mobileShareStartPromise = null;
+
+const mobileShareItems = new Map();
+const MOBILE_SHARE_CREATED_TTL_MS = 5 * 60 * 1000;
+const MOBILE_SHARE_OPENED_TTL_MS = 2 * 60 * 1000;
+const MOBILE_SHARE_MAX_TEXT_BYTES = 2 * 1024 * 1024;
 
 fs.readdirSync(logDir).forEach((file) => {
   if (file.startsWith("main.log.old")) {
@@ -463,6 +475,263 @@ function sendToAllWindows(channel, data) {
   });
 }
 
+function getLanIPv4Address() {
+  const interfaces = os.networkInterfaces();
+  const fallback = [];
+
+  for (const addresses of Object.values(interfaces)) {
+    for (const address of addresses || []) {
+      if (address.family !== "IPv4" || address.internal) continue;
+      if (/^(10\.|172\.(1[6-9]|2\d|3[0-1])\.|192\.168\.)/.test(address.address)) {
+        return address.address;
+      }
+      fallback.push(address.address);
+    }
+  }
+
+  return fallback[0] || null;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function stringifyForInlineScript(value) {
+  return JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+function deleteMobileShareItem(id) {
+  const item = mobileShareItems.get(id);
+  if (!item) return;
+  clearTimeout(item.expireTimer);
+  clearTimeout(item.openedExpireTimer);
+  mobileShareItems.delete(id);
+}
+
+function scheduleMobileShareExpiry(id, delay) {
+  const item = mobileShareItems.get(id);
+  if (!item) return null;
+
+  return setTimeout(() => {
+    deleteMobileShareItem(id);
+  }, delay);
+}
+
+function getMobileShareIdFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.match(/^\/share\/([A-Za-z0-9_-]{32,96})$/)?.[1] || null;
+  } catch {
+    return null;
+  }
+}
+
+function createMobileSharePage(item) {
+  const nonce = crypto.randomBytes(16).toString("base64");
+  const title = item.title || "Monapad Note";
+  const labels = {
+    copy: item.labels?.copy || "Copy",
+    copied: item.labels?.copied || "Copied!",
+  };
+  const payload = stringifyForInlineScript({ title, text: item.text });
+
+  return {
+    nonce,
+    html: `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)}</title>
+  <style nonce="${nonce}">
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #000;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      min-height: 100vh;
+      padding: 18px 16px 88px;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .actions {
+      position: fixed;
+      right: 14px;
+      bottom: 0;
+      display: flex;
+      padding: 0 0 calc(14px + env(safe-area-inset-bottom));
+    }
+    button {
+      min-width: 96px;
+      min-height: 42px;
+      padding: 0 18px;
+      border: 1px solid #18181a;
+      border-radius: 21px;
+      background: #18181a;
+      color: #fff;
+      font: inherit;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <pre id="note"></pre>
+  </main>
+  <div class="actions">
+    <button id="copy" type="button">${escapeHtml(labels.copy)}</button>
+  </div>
+  <script nonce="${nonce}">
+    const data = ${payload};
+    const labels = ${stringifyForInlineScript(labels)};
+    const note = document.getElementById("note");
+    const copyButton = document.getElementById("copy");
+    note.textContent = data.text;
+
+    async function copyText() {
+      try {
+        await navigator.clipboard.writeText(data.text);
+      } catch {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(note);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        document.execCommand("copy");
+        selection.removeAllRanges();
+      }
+      copyButton.textContent = labels.copied;
+      setTimeout(() => {
+        copyButton.textContent = labels.copy;
+      }, 1200);
+    }
+
+    copyButton.addEventListener("click", copyText);
+  </script>
+</body>
+</html>`,
+  };
+}
+
+function serveMobileShareRequest(req, res) {
+  try {
+    const requestUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    const match = requestUrl.pathname.match(/^\/share\/([A-Za-z0-9_-]{32,96})$/);
+
+    if (req.method !== "GET" || !match) {
+      res.writeHead(404, {
+        "Content-Type": "text/plain; charset=utf-8",
+        "X-Content-Type-Options": "nosniff",
+      });
+      res.end("Not found");
+      return;
+    }
+
+    const id = match[1];
+    const item = mobileShareItems.get(id);
+
+    if (!item || Date.now() > item.expiresAt) {
+      deleteMobileShareItem(id);
+      res.writeHead(410, {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-store",
+        "X-Content-Type-Options": "nosniff",
+      });
+      res.end("This temporary note link has expired.");
+      return;
+    }
+
+    if (!item.openedAt) {
+      item.openedAt = Date.now();
+      item.expiresAt = item.openedAt + MOBILE_SHARE_OPENED_TTL_MS;
+      clearTimeout(item.expireTimer);
+      item.expireTimer = scheduleMobileShareExpiry(id, MOBILE_SHARE_OPENED_TTL_MS);
+    }
+
+    const page = createMobileSharePage(item);
+    res.writeHead(200, {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store, max-age=0",
+      "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${page.nonce}'; style-src 'nonce-${page.nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+    });
+    res.end(page.html);
+  } catch (error) {
+    log.error("mobile share request failed:", error);
+    res.writeHead(500, {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.end("Internal server error");
+  }
+}
+
+function ensureMobileShareServer() {
+  if (mobileShareServer?.listening && mobileShareHost && mobileSharePort) {
+    return Promise.resolve({ host: mobileShareHost, port: mobileSharePort });
+  }
+  if (mobileShareStartPromise) return mobileShareStartPromise;
+
+  mobileShareStartPromise = new Promise((resolve, reject) => {
+    const host = getLanIPv4Address();
+    if (!host) {
+      mobileShareStartPromise = null;
+      reject(new Error("No LAN IPv4 address is available."));
+      return;
+    }
+
+    const server = http.createServer(serveMobileShareRequest);
+    server.keepAliveTimeout = 5000;
+    server.headersTimeout = 7000;
+    server.maxHeadersCount = 32;
+
+    server.on("clientError", (error, socket) => {
+      if (error.code === "HPE_INVALID_METHOD" || error.message.includes("Invalid method")) {
+        log.info("mobile share received HTTPS traffic on the HTTP share link. Use the displayed http:// URL.");
+      } else {
+        log.warn("mobile share client error:", error.message);
+      }
+      socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+    });
+
+    server.once("error", (error) => {
+      mobileShareStartPromise = null;
+      reject(error);
+    });
+
+    server.listen(0, host, () => {
+      mobileShareServer = server;
+      mobileShareHost = host;
+      mobileSharePort = server.address().port;
+      mobileShareStartPromise = null;
+      resolve({ host: mobileShareHost, port: mobileSharePort });
+    });
+  });
+
+  return mobileShareStartPromise;
+}
+
 ipcMain.handle("file:unwatch", (event, filePath) => {
   const refCount = watcherRefCounts.get(filePath) || 0;
   if (refCount > 1) {
@@ -502,6 +771,80 @@ ipcMain.handle("open-path", async (event, path) => {
   } catch (error) {
     log.error("Failed to open path:", error);
   }
+});
+
+ipcMain.handle("mobile-share:create", async (event, payload) => {
+  const text = typeof payload?.text === "string" ? payload.text : "";
+  const title = typeof payload?.title === "string" && payload.title.trim() ? payload.title.trim() : "Monapad Note";
+  const labels = payload?.labels && typeof payload.labels === "object" ? payload.labels : {};
+  const textBytes = Buffer.byteLength(text, "utf8");
+
+  if (textBytes > MOBILE_SHARE_MAX_TEXT_BYTES) {
+    return {
+      success: false,
+      errorKey: "tooLarge",
+      maxMb: Math.floor(MOBILE_SHARE_MAX_TEXT_BYTES / 1024 / 1024),
+    };
+  }
+
+  try {
+    const { host, port } = await ensureMobileShareServer();
+    const id = crypto.randomBytes(32).toString("base64url");
+    const expiresAt = Date.now() + MOBILE_SHARE_CREATED_TTL_MS;
+    const expireTimer = setTimeout(() => {
+      deleteMobileShareItem(id);
+    }, MOBILE_SHARE_CREATED_TTL_MS);
+
+    mobileShareItems.set(id, {
+      id,
+      title: title.slice(0, 160),
+      text,
+      labels: {
+        copy: typeof labels.copy === "string" ? labels.copy.slice(0, 40) : "Copy",
+        copied: typeof labels.copied === "string" ? labels.copied.slice(0, 40) : "Copied!",
+      },
+      createdAt: Date.now(),
+      expiresAt,
+      expireTimer,
+      openedExpireTimer: null,
+      openedAt: null,
+    });
+
+    return {
+      success: true,
+      url: `http://${host}:${port}/share/${id}`,
+      expiresAt,
+      expiresInMs: MOBILE_SHARE_CREATED_TTL_MS,
+      openedExpiresInMs: MOBILE_SHARE_OPENED_TTL_MS,
+    };
+  } catch (error) {
+    log.error("mobile share create failed:", error);
+    return { success: false, errorKey: "createError" };
+  }
+});
+
+ipcMain.handle("mobile-share:revoke", async (event, url) => {
+  const id = getMobileShareIdFromUrl(url);
+  if (id) deleteMobileShareItem(id);
+  return { success: Boolean(id) };
+});
+
+ipcMain.handle("mobile-share:status", async (event, url) => {
+  const id = getMobileShareIdFromUrl(url);
+  if (!id) return { exists: false, expired: true };
+
+  const item = mobileShareItems.get(id);
+  if (!item || Date.now() > item.expiresAt) {
+    deleteMobileShareItem(id);
+    return { exists: false, expired: true };
+  }
+
+  return {
+    exists: true,
+    expired: false,
+    opened: Boolean(item.openedAt),
+    expiresAt: item.expiresAt,
+  };
 });
 
 // font
@@ -725,6 +1068,18 @@ if (!gotTheLock) {
 
   app.on("window-all-closed", function () {
     if (process.platform !== "darwin") app.quit();
+  });
+
+  app.on("before-quit", () => {
+    for (const id of mobileShareItems.keys()) {
+      deleteMobileShareItem(id);
+    }
+    if (mobileShareServer) {
+      mobileShareServer.close();
+      mobileShareServer = null;
+      mobileShareHost = null;
+      mobileSharePort = null;
+    }
   });
 
   // Handle macOS file opening

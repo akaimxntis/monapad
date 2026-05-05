@@ -46,6 +46,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   fileExists: (filePath) => ipcRenderer.invoke("file:exists", filePath),
   getPathForFile: (file) => webUtils.getPathForFile(file),
   openPath: (path) => ipcRenderer.invoke("open-path", path),
+  createMobileShare: (payload) => ipcRenderer.invoke("mobile-share:create", payload),
+  revokeMobileShare: (url) => ipcRenderer.invoke("mobile-share:revoke", url),
+  getMobileShareStatus: (url) => ipcRenderer.invoke("mobile-share:status", url),
   onWindowFocus: (callback) => ipcRenderer.on("window-focus", (event, focused) => callback(focused)),
   onAttemptCloseWindow: (callback) => ipcRenderer.on("attempt-close-window", callback),
 

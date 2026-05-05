@@ -36,6 +36,21 @@
     "fileModified": "Datei wurde extern geändert!",
     "ReloadButtonTooltip": "Datei neu laden"
   },
+  "deviceShare": {
+    "title": "Auf andere Geräte teilen",
+    "tooltip": "Auf andere Geräte teilen",
+    "description": "Dieser QR-Code und Link funktionieren nur im selben Netzwerk und nur solange dieses Fenster geöffnet ist oder bis der Link abläuft.",
+    "preparing": "Temporären Link wird vorbereitet...",
+    "copyLink": "Kopieren",
+    "copied": "Kopiert!",
+    "regenerate": "Neu generieren",
+    "expired": "Abgelaufen!",
+    "close": "Schließen",
+    "createError": "Temporärer lokaler Link konnte nicht erstellt werden. Bitte prüfen Sie, ob dieses Gerät mit einem Netzwerk verbunden ist.",
+    "tooLarge": "Text ist zu groß. Maximale Größe: {{maxMb}} MB.",
+    "pageCopy": "Kopieren",
+    "pageCopied": "Kopiert!"
+  },
   "editorMenu": {
     "cut": "Ausschneiden",
     "copy": "Kopieren",

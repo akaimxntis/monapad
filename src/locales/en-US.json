@@ -36,6 +36,21 @@
     "fileModified": "File modified externally!",
     "ReloadButtonTooltip": "Reload File"
   },
+  "deviceShare": {
+    "title": "Share to other devices",
+    "tooltip": "Share to other devices",
+    "description": "This QR code and link work only on the same network, and only while this modal is open or until the link expires.",
+    "preparing": "Preparing temporary link...",
+    "copyLink": "Copy",
+    "copied": "Copied!",
+    "regenerate": "Regenerate",
+    "expired": "expired!",
+    "close": "Close",
+    "createError": "Could not create a temporary local link. Check that this device is connected to a network.",
+    "tooLarge": "Text is too large. Maximum size is {{maxMb}} MB.",
+    "pageCopy": "Copy",
+    "pageCopied": "Copied!"
+  },
   "editorMenu": {
     "cut": "Cut",
     "copy": "Copy",

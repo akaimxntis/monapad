@@ -3,6 +3,7 @@ import Choices from "choices.js";
 import "choices.js/public/assets/styles/choices.min.css";
 import "./custom-choices.css";
 import i18next from "i18next";
+import QRCode from "qrcode";
 
 const toolbar = document.getElementById("toolbar");
 const tabsContainer = document.getElementById("tabs-container");
@@ -67,6 +68,21 @@ const cancelAllBtn = document.getElementById("confirm-cancel-all");
 const about = document.getElementById("about");
 const fileDropBox = document.getElementById("file-drop-background");
 const fileDrop = document.getElementById("file-drop");
+const deviceShareBtn = document.getElementById("device-share-btn");
+const deviceShareTitle = document.getElementById("device-share-title");
+const deviceShareModal = document.getElementById("device-share-modal");
+const deviceShareClose = document.getElementById("device-share-close");
+const deviceShareQr = document.getElementById("device-share-qr");
+const deviceShareUrl = document.getElementById("device-share-url");
+const deviceShareCopy = document.getElementById("device-share-copy");
+const deviceShareRegenerate = document.getElementById("device-share-regenerate");
+const deviceShareDescription = document.getElementById("device-share-description");
+const deviceShareError = document.getElementById("device-share-error");
+let activeDeviceShareUrl = null;
+let deviceShareExpiresAt = null;
+let deviceShareCountdownTimer = null;
+let deviceShareStatusSyncing = false;
+let deviceShareCopyResetTimer = null;
 
 // tab dragging
 let lastPreviewX = null;
@@ -292,6 +308,14 @@ function updateMenuLabels() {
   document.getElementById("file-opened").textContent = i18next.t("message.fileAlreadyOpened");
   document.getElementById("file-updated").textContent = i18next.t("message.fileUpdated");
   document.getElementById("file-modified").textContent = i18next.t("message.fileModified");
+
+  // device share modal
+  if (deviceShareBtn) deviceShareBtn.title = i18next.t("deviceShare.tooltip");
+  if (deviceShareTitle) deviceShareTitle.textContent = i18next.t("deviceShare.title");
+  if (deviceShareCopy) deviceShareCopy.textContent = i18next.t("deviceShare.copyLink");
+  if (deviceShareClose) deviceShareClose.textContent = i18next.t("deviceShare.close");
+  if (deviceShareDescription) deviceShareDescription.textContent = i18next.t("deviceShare.description");
+  updateDeviceShareRegenerateButton();
 
   // editor context menu
   document.querySelector('button[data-action="cut"] .label').textContent = i18next.t("editorMenu.cut");
@@ -1205,6 +1229,25 @@ function scheduleApplyDecorations() {
   });
 }
 
+function getCurrentEditorText() {
+  if (!currentTab) return "";
+  if (monacoEditor && monacoEditor.getModel() === currentTab.model) {
+    return monacoEditor.getValue();
+  }
+  return currentTab.model?.getValue() ?? currentTab.content ?? "";
+}
+
+function normalizeTextForModelComparison(text) {
+  return (typeof text === "string" ? text : "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+function updateDeviceShareButtonState() {
+  if (!deviceShareBtn) return;
+
+  const hasMeaningfulText = getCurrentEditorText().trim().length > 0;
+  deviceShareBtn.disabled = !hasMeaningfulText;
+}
+
 // detect change in editor
 monacoEditor.onDidChangeModelContent(() => {
   const active = currentTab;
@@ -1222,6 +1265,7 @@ monacoEditor.onDidChangeModelContent(() => {
   syncTabSaveState(active, currentContent);
 
   updateStatusBar();
+  updateDeviceShareButtonState();
   scheduleApplyDecorations();
 });
 monacoEditor.onDidScrollChange(() => {
@@ -2031,6 +2075,201 @@ document.getElementById("about-close").addEventListener("click", () => {
   monacoEditor?.focus();
 });
 
+function stopDeviceShareCountdown() {
+  if (deviceShareCountdownTimer) {
+    clearInterval(deviceShareCountdownTimer);
+    deviceShareCountdownTimer = null;
+  }
+}
+
+function formatRemainingTime(ms) {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
+}
+
+function updateDeviceShareRegenerateButton() {
+  if (!deviceShareRegenerate) return;
+
+  if (!deviceShareExpiresAt && !activeDeviceShareUrl) {
+    deviceShareRegenerate.disabled = true;
+    deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
+    return;
+  }
+
+  const remainingMs = deviceShareExpiresAt ? deviceShareExpiresAt - Date.now() : 0;
+  if (remainingMs > 0) {
+    deviceShareRegenerate.disabled = true;
+    deviceShareRegenerate.textContent = `${i18next.t("deviceShare.regenerate")} (${formatRemainingTime(remainingMs)})`;
+    return;
+  }
+
+  stopDeviceShareCountdown();
+  deviceShareRegenerate.disabled = false;
+  deviceShareRegenerate.innerHTML = `${i18next.t("deviceShare.regenerate")} <span id="device-share-expired">(${i18next.t(
+    "deviceShare.expired",
+  )})</span>`;
+}
+
+async function syncDeviceShareStatus() {
+  if (!activeDeviceShareUrl || deviceShareStatusSyncing) return;
+
+  deviceShareStatusSyncing = true;
+  try {
+    const status = await window.electronAPI.getMobileShareStatus(activeDeviceShareUrl);
+    if (!status?.exists || status.expired) {
+      deviceShareExpiresAt = Date.now();
+      updateDeviceShareRegenerateButton();
+      return;
+    }
+    if (typeof status.expiresAt === "number" && status.expiresAt !== deviceShareExpiresAt) {
+      deviceShareExpiresAt = status.expiresAt;
+      updateDeviceShareRegenerateButton();
+    }
+  } finally {
+    deviceShareStatusSyncing = false;
+  }
+}
+
+function startDeviceShareCountdown(expiresAt) {
+  deviceShareExpiresAt = expiresAt || null;
+  stopDeviceShareCountdown();
+  updateDeviceShareRegenerateButton();
+  deviceShareCountdownTimer = setInterval(() => {
+    updateDeviceShareRegenerateButton();
+    syncDeviceShareStatus();
+  }, 1000);
+}
+
+function resetDeviceShareCopyButton() {
+  if (!deviceShareCopy) return;
+  clearTimeout(deviceShareCopyResetTimer);
+  deviceShareCopy.textContent = i18next.t("deviceShare.copyLink");
+}
+
+function setDeviceShareCopyButtonCopied() {
+  if (!deviceShareCopy) return;
+  clearTimeout(deviceShareCopyResetTimer);
+  deviceShareCopy.textContent = i18next.t("deviceShare.copied");
+  deviceShareCopyResetTimer = setTimeout(resetDeviceShareCopyButton, 1200);
+}
+
+function resetDeviceShareModal() {
+  deviceShareQr.removeAttribute("src");
+  deviceShareUrl.value = "";
+  deviceShareError.style.display = "none";
+  deviceShareError.textContent = "";
+  deviceShareDescription.textContent = i18next.t("deviceShare.description");
+  resetDeviceShareCopyButton();
+  stopDeviceShareCountdown();
+  deviceShareExpiresAt = null;
+  deviceShareRegenerate.disabled = true;
+  deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
+}
+
+function getDeviceShareErrorMessage(result) {
+  if (result?.errorKey === "tooLarge") {
+    return i18next.t("deviceShare.tooLarge", { maxMb: result.maxMb || 2 });
+  }
+  return i18next.t("deviceShare.createError");
+}
+
+async function closeDeviceShareModal() {
+  confirmBox.style.display = "none";
+  deviceShareModal.style.display = "none";
+  isModalDisplayed = false;
+  stopDeviceShareCountdown();
+  deviceShareExpiresAt = null;
+
+  if (activeDeviceShareUrl) {
+    await window.electronAPI.revokeMobileShare(activeDeviceShareUrl);
+    activeDeviceShareUrl = null;
+  }
+
+  monacoEditor?.focus();
+}
+
+async function createDeviceShareLink() {
+  if (!monacoEditor || !currentTab) return;
+
+  if (activeDeviceShareUrl) {
+    await window.electronAPI.revokeMobileShare(activeDeviceShareUrl);
+    activeDeviceShareUrl = null;
+  }
+
+  deviceShareDescription.textContent = i18next.t("deviceShare.preparing");
+  deviceShareRegenerate.disabled = true;
+  deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
+  resetDeviceShareCopyButton();
+
+  const title = currentTab.name || "Monapad Note";
+  const text = monacoEditor.getModel() === currentTab.model ? monacoEditor.getValue() : currentTab.model.getValue();
+  const result = await window.electronAPI.createMobileShare({
+    title,
+    text,
+    labels: {
+      copy: i18next.t("deviceShare.pageCopy"),
+      copied: i18next.t("deviceShare.pageCopied"),
+    },
+  });
+
+  if (!result?.success) {
+    deviceShareDescription.textContent = "";
+    deviceShareError.textContent = getDeviceShareErrorMessage(result);
+    deviceShareError.style.display = "block";
+    deviceShareRegenerate.disabled = false;
+    deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
+    return;
+  }
+
+  activeDeviceShareUrl = result.url;
+  deviceShareUrl.value = result.url;
+  deviceShareQr.src = await QRCode.toDataURL(result.url, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 220,
+    color: {
+      dark: getCSSVar("--editorText") || "#ffffff",
+      light: getCSSVar("--color1") || "#000000",
+    },
+  });
+  deviceShareDescription.textContent = i18next.t("deviceShare.description");
+  startDeviceShareCountdown(result.expiresAt);
+}
+
+async function openDeviceShareModal() {
+  if (!monacoEditor || !currentTab) return;
+  if (!getCurrentEditorText().trim()) {
+    updateDeviceShareButtonState();
+    return;
+  }
+
+  confirmBox.style.display = "flex";
+  deviceShareModal.style.display = "flex";
+  isModalDisplayed = true;
+  resetDeviceShareModal();
+  await createDeviceShareLink();
+}
+
+deviceShareBtn?.addEventListener("click", openDeviceShareModal);
+deviceShareClose?.addEventListener("click", closeDeviceShareModal);
+deviceShareRegenerate?.addEventListener("click", async () => {
+  if (deviceShareRegenerate.disabled) return;
+  await createDeviceShareLink();
+});
+deviceShareCopy?.addEventListener("click", async () => {
+  if (!deviceShareUrl.value) return;
+
+  try {
+    await navigator.clipboard.writeText(deviceShareUrl.value);
+    setDeviceShareCopyButtonCopied();
+  } catch (err) {
+    deviceShareUrl.focus();
+    deviceShareUrl.select();
+  }
+});
+
 // window controls
 document.getElementById("min-button").addEventListener("click", () => {
   window.electronAPI.minimizeWindow();
@@ -2213,7 +2452,9 @@ function showDropIndicator(clientX) {
   }
 
   left = Math.max(0, Math.min(left, tabsRect.width));
-  dropIndicator.style.left = `${left}px`;
+  const indicatorWidth = dropIndicator.offsetWidth || 2;
+  const centeredLeft = left - indicatorWidth / 2;
+  dropIndicator.style.left = `${centeredLeft}px`;
   dropIndicator.style.display = "block";
 }
 
@@ -2815,6 +3056,7 @@ async function attemptCloseTab(data) {
         updateTabsCompactClass();
         if (data.model) data.model.dispose();
         tabData = tabData.filter((t) => t !== data);
+        syncRecentlyClosedFilesState();
 
         if (tab.classList.contains("active")) {
           if (tabData.length) {
@@ -2929,6 +3171,7 @@ async function attemptCloseTab(data) {
     updateTabsCompactClass();
     if (data.model) data.model.dispose();
     tabData = tabData.filter((t) => t !== data);
+    syncRecentlyClosedFilesState();
 
     if (tab.classList.contains("active")) {
       if (tabData.length) {
@@ -2976,21 +3219,50 @@ function addToRecentlyClosedFiles(filePath, tabIndex) {
     recentlyClosedFiles = recentlyClosedFiles.slice(0, 10);
   }
 
-  if (recentlyClosedFiles.length >= 1) {
-    const reopenBtn = document.querySelector('[data-action="reopenClosedTab"]');
-    reopenBtn?.classList.remove("disabled");
-  }
+  updateReopenClosedTabButtonState();
 }
+
+function updateReopenClosedTabButtonState() {
+  const reopenBtn = document.querySelector('[data-action="reopenClosedTab"]');
+  reopenBtn?.classList.toggle("disabled", recentlyClosedFiles.length === 0);
+}
+
+function syncRecentlyClosedFilesState() {
+  const openPaths = new Set(tabData.map((tab) => tab.path).filter(Boolean));
+  const seenPaths = new Set();
+
+  recentlyClosedFiles = recentlyClosedFiles.filter((item) => {
+    if (!item?.path || openPaths.has(item.path) || seenPaths.has(item.path)) return false;
+    seenPaths.add(item.path);
+    return true;
+  });
+
+  updateReopenClosedTabButtonState();
+}
+
 // open recently closed files
 async function reopenRecentlyClosedFile() {
-  if (recentlyClosedFiles.length === 0) return;
-  const { path: filePath, index: originalIndex } = recentlyClosedFiles.shift();
-  const restoreIndex = Math.min(originalIndex, tabData.length);
-  await loadFileByPath(filePath, restoreIndex);
-  if (recentlyClosedFiles.length === 0) {
-    const reopenBtn = document.querySelector('[data-action="reopenClosedTab"]');
-    reopenBtn?.classList.add("disabled");
+  syncRecentlyClosedFilesState();
+
+  while (recentlyClosedFiles.length > 0) {
+    const { path: filePath, index: originalIndex } = recentlyClosedFiles.shift();
+    const existingTab = tabData.find((tab) => tab.path === filePath);
+
+    if (existingTab) {
+      switchTab(existingTab);
+      continue;
+    }
+
+    const exists = await window.electronAPI.fileExists(filePath);
+    if (!exists) continue;
+
+    const restoreIndex = Math.min(originalIndex, tabData.length);
+    await loadFileByPath(filePath, restoreIndex);
+    syncRecentlyClosedFilesState();
+    return;
   }
+
+  updateReopenClosedTabButtonState();
 }
 
 // close window
@@ -3150,6 +3422,7 @@ function switchTab(data) {
 
   currentTab = data;
   currentFilePath = data.path || data.name;
+  updateDeviceShareButtonState();
 
   // restore selection, scroll position
   if (data.viewState) monacoEditor.restoreViewState(data.viewState);
@@ -3232,7 +3505,7 @@ async function handleFileChange(targetTab, filePath) {
     return;
   }
 
-  if (targetTab.isFileSaved && content === targetTab.originalContent) {
+  if (targetTab.isFileSaved && normalizeTextForModelComparison(content) === targetTab.originalContent) {
     reloadButton(targetTab, null, "remove");
     targetTab._lastExternalContent = content;
     return;
@@ -3247,12 +3520,15 @@ async function handleFileChange(targetTab, filePath) {
 
 function applyFileContentToEditor(tab, content) {
   tab._lastExternalContent = content;
-  tab.originalContent = content;
   tab.isFileSaved = true;
 
   if (tab !== currentTab) switchTab(tab);
   tab.viewState = monacoEditor.saveViewState();
+  tab._ignoreUnsavedCheck = true;
   tab.model.setValue(content);
+  const modelContent = tab.model.getValue();
+  tab.content = modelContent;
+  tab.originalContent = modelContent;
 
   monacoEditor.restoreViewState(tab.viewState);
   monacoEditor.focus();
@@ -3317,8 +3593,8 @@ async function loadFileByPath(filePath, insertIndex = null) {
   const existingTab = tabData.find((tab) => tab.path === filePath);
   if (existingTab) {
     switchTab(existingTab);
+    syncRecentlyClosedFilesState();
     showMessage("file-opened");
-    console.log("path already opened. switching to that tab.");
     return;
   }
 
@@ -3335,25 +3611,32 @@ async function loadFileByPath(filePath, insertIndex = null) {
     const currentContent = monacoEditor ? monacoEditor.getValue() : "";
     if (!singleTab.content.trim() && !currentContent.trim()) {
       singleTab.name = filePath.split(/[/\\]/).pop();
-      singleTab.content = content;
       singleTab._lastExternalContent = content;
       singleTab.path = filePath;
-      singleTab.originalContent = content;
       singleTab.isFileSaved = true;
       singleTab.isMarkdown = isMarkdownFile;
+      singleTab.isWarned = false;
 
       const nameSpan = singleTab.element.querySelector(".name");
       if (nameSpan) {
         nameSpan.textContent = singleTab.name;
         nameSpan.title = singleTab.name;
+        nameSpan.classList.remove("warn");
       }
 
       const close = singleTab.element.querySelector(".close");
       if (close) close.classList.remove("show-unsaved");
 
+      reloadButton(singleTab, null, "remove");
+      singleTab._ignoreUnsavedCheck = true;
       singleTab.model.setValue(content);
+      const modelContent = singleTab.model.getValue();
+      singleTab.content = modelContent;
+      singleTab.originalContent = modelContent;
+      singleTab.isFileSaved = true;
       switchTab(singleTab);
       updateRecentFiles(filePath);
+      syncRecentlyClosedFilesState();
       return;
     }
   }
@@ -3367,18 +3650,23 @@ async function loadFileByPath(filePath, insertIndex = null) {
     targetIndex = Math.max(0, targetIndex);
   }
 
-  const newTab = createTab(filePath.split(/[/\\]/).pop(), content, filePath, targetIndex);
-  const newTabData = tabData[tabData.length - 1];
-  newTabData.originalContent = content;
+  const newTabData = createTab(filePath.split(/[/\\]/).pop(), content, filePath, targetIndex);
+  const modelContent = newTabData.model.getValue();
+  newTabData.content = modelContent;
+  newTabData.originalContent = modelContent;
   newTabData._lastExternalContent = content;
   newTabData.isFileSaved = true;
   newTabData.isMarkdown = isMarkdownFile;
+  newTabData.isWarned = false;
 
   const newTabClose = newTabData.element.querySelector(".close");
   if (newTabClose) newTabClose.classList.remove("show-unsaved");
+  newTabData.element.querySelector(".name")?.classList.remove("warn");
+  reloadButton(newTabData, null, "remove");
 
-  switchTab(newTab);
+  switchTab(newTabData);
   updateRecentFiles(filePath);
+  syncRecentlyClosedFilesState();
 }
 
 // recently opened file handler
@@ -3641,6 +3929,8 @@ document.addEventListener("contextmenu", async (e) => {
   rightClickedTab = tabData.find((t) => t.element === tabElement);
   if (!rightClickedTab) return;
 
+  syncRecentlyClosedFilesState();
+
   // update reopen closed tab button
   const validItems = [];
   for (const item of recentlyClosedFiles) {
@@ -3649,8 +3939,7 @@ document.addEventListener("contextmenu", async (e) => {
   }
   if (validItems.length !== recentlyClosedFiles.length) {
     recentlyClosedFiles = validItems;
-    const reopenBtn = document.querySelector('[data-action="reopenClosedTab"]');
-    reopenBtn.classList.toggle("disabled", recentlyClosedFiles.length === 0);
+    updateReopenClosedTabButtonState();
   }
 
   // Hide editor context menu
