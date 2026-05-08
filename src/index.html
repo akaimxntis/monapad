@@ -82,7 +82,7 @@
         --grayOut: #565b66; /* grayed out text and element color */
         --highlight: #569cd6; /* accent color, link color */
         --btnHighlight: #3074ac; /* modal highlight button */
-        --windowClose: #e81123; /* window close */
+        --windowClose: #c42b1c; /* window close */
         --warn: #cf5d6e; /* deleted file title */
 
         --window-top-safe-area: 1px; /* to prevent windows 11 border from overlapping the content, set to 0px if not needed */
@@ -1090,14 +1090,19 @@
         --device-share-qr-size: clamp(110px, min(220px, calc(100vw - 124px), calc(100vh - 270px)), 220px);
         display: none;
         flex-direction: column;
-        width: min(calc(100vw - 48px), 420px);
-        max-height: calc(100vh - 48px);
+        max-width: min(calc(100vw - 100px), 360px);
+        max-height: calc(100vh - 100px);
         padding: 18px;
         background: var(--color1);
         color: var(--editorText);
         border: solid 1px var(--color3);
         font-size: 14px;
         overflow: hidden;
+      }
+      #device-share-main {
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
       }
       #device-share-title {
         margin: 0;
@@ -1157,6 +1162,7 @@
       #device-share-url-row {
         display: flex;
         gap: 8px;
+        padding: 0 8px;
       }
       #device-share-url {
         flex: 1;
@@ -2055,21 +2061,23 @@
         </div>
         <!-- device share -->
         <div id="device-share-modal">
-          <div id="device-share-header">
-            <h1 id="device-share-title">Share to other devices</h1>
+          <div id="device-share-main" class="scrollable">
+            <div id="device-share-header">
+              <h1 id="device-share-title">Share to other devices</h1>
+            </div>
+            <div id="device-share-qr-wrap">
+              <img id="device-share-qr" alt="QR code" />
+            </div>
+            <div id="device-share-url-row">
+              <input id="device-share-url" type="text" readonly />
+              <button id="device-share-copy" type="button">Copy</button>
+            </div>
+            <p id="device-share-description">
+              This QR code and link work only on the same network, and only while this modal is open or until the link
+              expires.
+            </p>
+            <p id="device-share-error"></p>
           </div>
-          <div id="device-share-qr-wrap">
-            <img id="device-share-qr" alt="QR code" />
-          </div>
-          <div id="device-share-url-row">
-            <input id="device-share-url" type="text" readonly />
-            <button id="device-share-copy" type="button">Copy</button>
-          </div>
-          <p id="device-share-description">
-            This QR code and link work only on the same network, and only while this modal is open or until the link
-            expires.
-          </p>
-          <p id="device-share-error"></p>
           <div id="device-share-actions">
             <button id="device-share-regenerate" type="button" disabled>Regenerate</button>
             <button id="device-share-close" type="button">Close</button>

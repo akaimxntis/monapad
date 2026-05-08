@@ -139,12 +139,14 @@ const WRAP_MEASURE_OPTIONS = {
 const AUTOSAVE_DEBOUNCE_MS = 3000;
 const AUTOSAVE_FORCE_MS = 30000;
 const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
+const DEVICE_SHARE_DIRECT_URL_MAX_BYTES = 1500;
 const autosaveTimers = new Map();
 let isRestoringAutosaveDrafts = false;
 
 // tabs hover state, width handling
 let tabAreaHovered = false;
 let fixedTabsWidth = null;
+let pendingTabsWidthAfterClose = null;
 let isHoveringLastTab = false;
 let mouseX = 0;
 let mouseY = 0;
@@ -2443,6 +2445,20 @@ function getDeviceShareErrorMessage(result) {
   return i18next.t("deviceShare.createError");
 }
 
+function getDirectShareUrl(text) {
+  const trimmed = (typeof text === "string" ? text : "").trim();
+  if (!trimmed || /\s/.test(trimmed)) return null;
+  if (new Blob([trimmed]).size > DEVICE_SHARE_DIRECT_URL_MAX_BYTES) return null;
+
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
 async function closeDeviceShareModal() {
   confirmBox.style.display = "none";
   deviceShareModal.style.display = "none";
@@ -2474,6 +2490,29 @@ async function createDeviceShareLink() {
 
   const title = currentTab.name || "Monapad Note";
   const text = monacoEditor.getModel() === currentTab.model ? monacoEditor.getValue() : currentTab.model.getValue();
+  const directUrl = getDirectShareUrl(text);
+
+  if (directUrl) {
+    activeDeviceShareUrl = null;
+    deviceShareUrl.value = directUrl;
+    deviceShareQr.src = await QRCode.toDataURL(directUrl, {
+      errorCorrectionLevel: "M",
+      margin: 1,
+      width: 220,
+      color: {
+        dark: getCSSVar("--editorText") || "#ffffff",
+        light: getCSSVar("--color1") || "#000000",
+      },
+    });
+    setDeviceShareLinkContentVisible(true);
+    stopDeviceShareCountdown();
+    deviceShareExpiresAt = null;
+    deviceShareDescription.textContent = i18next.t("deviceShare.directLinkDescription");
+    deviceShareRegenerate.disabled = true;
+    deviceShareRegenerate.textContent = i18next.t("deviceShare.regenerate");
+    return;
+  }
+
   const result = await window.electronAPI.createMobileShare({
     title,
     text,
@@ -2585,6 +2624,7 @@ function handleTabsMouseLeave() {
   tabAreaHovered = false;
   isHoveringLastTab = false;
   fixedTabsWidth = null;
+  pendingTabsWidthAfterClose = null;
   tabs.style.maxWidth = "";
   updateTabsCompactClass();
 }
@@ -3186,12 +3226,30 @@ function updateTabsCompactClass() {
   tabs.classList.toggle("compact", tabWidth <= 60);
 }
 
+function prepareTabsWidthForClose(tab, keepCurrentWidth = false) {
+  const tabsWidth = tabs.getBoundingClientRect().width;
+  const tabWidth = tab.getBoundingClientRect().width;
+  pendingTabsWidthAfterClose = keepCurrentWidth ? tabsWidth : Math.max(0, tabsWidth - tabWidth);
+}
+
+function applyPendingTabsWidthAfterClose() {
+  if (pendingTabsWidthAfterClose === null) return;
+  fixedTabsWidth = pendingTabsWidthAfterClose;
+  tabs.style.maxWidth = `${fixedTabsWidth}px`;
+  pendingTabsWidthAfterClose = null;
+}
+
+function clearPendingTabsWidthAfterClose() {
+  pendingTabsWidthAfterClose = null;
+}
+
 // create tab
 function createTab(name, content = "", path = null, insertIndex = null) {
   if (!name) name = `${i18next.t("file.untitled")}.txt`;
 
   // reset tabs max width
   fixedTabsWidth = null;
+  pendingTabsWidthAfterClose = null;
   tabs.style.maxWidth = "";
 
   const tab = document.createElement("div");
@@ -3254,19 +3312,17 @@ function createTab(name, content = "", path = null, insertIndex = null) {
   close.onclick = async (e) => {
     e.stopPropagation();
 
+    clearPendingTabsWidthAfterClose();
     if (tabAreaHovered && !isHoveringLastTab) {
       // set current tabs width - current tab width to tabs max width before closing tab
-      const currentTabsWidth = tabs.offsetWidth;
-      const tabWidth = tab.offsetWidth;
-      fixedTabsWidth = currentTabsWidth - tabWidth;
-      tabs.style.maxWidth = fixedTabsWidth + "px";
+      prepareTabsWidthForClose(tab);
     } else if (tabAreaHovered && isHoveringLastTab) {
       // keep max width when last tab is closed
-      fixedTabsWidth = tabs.offsetWidth;
-      tabs.style.maxWidth = fixedTabsWidth + "px";
+      prepareTabsWidthForClose(tab, true);
     }
 
     await attemptCloseTab(data);
+    clearPendingTabsWidthAfterClose();
 
     // update tabscontainer client rect
     if (tabAreaHovered && !isMouseInsideTabsContainer()) {
@@ -3285,17 +3341,15 @@ function createTab(name, content = "", path = null, insertIndex = null) {
       e.preventDefault();
       e.stopPropagation();
 
+      clearPendingTabsWidthAfterClose();
       if (tabAreaHovered && !isHoveringLastTab) {
-        const currentTabsWidth = tabs.offsetWidth;
-        const tabWidth = tab.offsetWidth;
-        fixedTabsWidth = currentTabsWidth - tabWidth;
-        tabs.style.maxWidth = fixedTabsWidth + "px";
+        prepareTabsWidthForClose(tab);
       } else if (tabAreaHovered && isHoveringLastTab) {
-        fixedTabsWidth = tabs.offsetWidth;
-        tabs.style.maxWidth = fixedTabsWidth + "px";
+        prepareTabsWidthForClose(tab, true);
       }
 
       await attemptCloseTab(data);
+      clearPendingTabsWidthAfterClose();
 
       if (tabAreaHovered && !isMouseInsideTabsContainer()) {
         handleTabsMouseLeave();
@@ -3344,6 +3398,7 @@ async function attemptCloseTab(data) {
 
         const index = tabData.indexOf(data);
         tabs.removeChild(tab);
+        applyPendingTabsWidthAfterClose();
         updateTabsCompactClass();
         if (data.model) data.model.dispose();
         tabData = tabData.filter((t) => t !== data);
@@ -3464,6 +3519,7 @@ async function attemptCloseTab(data) {
     }
     const index = tabData.indexOf(data);
     tabs.removeChild(tab);
+    applyPendingTabsWidthAfterClose();
     updateTabsCompactClass();
     if (data.model) data.model.dispose();
     tabData = tabData.filter((t) => t !== data);

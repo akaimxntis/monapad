@@ -971,6 +971,11 @@ function createMobileSharePage(item) {
       word-break: break-word;
       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+    a {
+      color: #fff;
+      text-decoration: underline;
+      text-underline-offset: 0.14em;
+    }
     .actions {
       position: fixed;
       right: 14px;
@@ -1002,7 +1007,43 @@ function createMobileSharePage(item) {
     const labels = ${stringifyForInlineScript(labels)};
     const note = document.getElementById("note");
     const copyButton = document.getElementById("copy");
-    note.textContent = data.text;
+
+    function isSafeHttpUrl(value) {
+      try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:";
+      } catch {
+        return false;
+      }
+    }
+
+    function appendLinkedText(container, text) {
+      const urlPattern = /https?:\\/\\/[^\\s<>"']+/g;
+      let lastIndex = 0;
+      for (const match of text.matchAll(urlPattern)) {
+        const urlText = match[0];
+        const index = match.index || 0;
+        if (index > lastIndex) {
+          container.appendChild(document.createTextNode(text.slice(lastIndex, index)));
+        }
+        if (isSafeHttpUrl(urlText)) {
+          const link = document.createElement("a");
+          link.href = urlText;
+          link.textContent = urlText;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          container.appendChild(link);
+        } else {
+          container.appendChild(document.createTextNode(urlText));
+        }
+        lastIndex = index + urlText.length;
+      }
+      if (lastIndex < text.length) {
+        container.appendChild(document.createTextNode(text.slice(lastIndex)));
+      }
+    }
+
+    appendLinkedText(note, data.text);
 
     async function copyText() {
       try {

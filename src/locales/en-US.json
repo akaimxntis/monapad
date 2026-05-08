@@ -41,6 +41,7 @@
     "title": "Share to other devices",
     "tooltip": "Share to other devices",
     "description": "This QR code and link work only on the same network, and only while this modal is open or until the link expires.",
+    "directLinkDescription": "This QR code and link open the URL directly.",
     "preparing": "Preparing temporary link...",
     "copyLink": "Copy",
     "copied": "Copied!",

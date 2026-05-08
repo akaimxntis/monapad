@@ -41,6 +41,7 @@
     "title": "Mit anderen Geräten teilen",
     "tooltip": "Mit anderen Geräten teilen",
     "description": "Dieser QR-Code und Link funktionieren nur im selben Netzwerk und nur, solange dieses Fenster geöffnet ist oder bis der Link abläuft.",
+    "directLinkDescription": "Dieser QR-Code und Link öffnen die URL direkt.",
     "preparing": "Temporärer Link wird vorbereitet...",
     "copyLink": "Kopieren",
     "copied": "Kopiert!",
