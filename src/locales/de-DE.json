@@ -6,7 +6,10 @@
     "line": "Ze",
     "col": "Sp",
     "selection": "({{count}} ausgewählt)",
-    "encodingTooltip": "Dieser Editor unterstützt nur UTF-8.\nWenn du andere Kodierungen verwenden möchtest, konvertiere sie bitte vor dem Öffnen in UTF-8."
+    "encodingTooltip": "Dieser Editor unterstützt nur UTF-8.\nWenn du andere Kodierungen verwenden möchtest, konvertiere sie bitte vor dem Öffnen in UTF-8.",
+    "chordFirst": "({{first}}) wurde gedrückt. Warte auf die zweite Taste der Tastenkombination...",
+    "chordNext": "({{keys}}) wurde gedrückt. Warte auf die nächste Taste der Tastenkombination...",
+    "chordMissing": "Die Tastenkombination ({{keys}}) ist kein Befehl."
   },
   "menu": {
     "new": "Neu",

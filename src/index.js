@@ -1,4 +1,6 @@
 import * as monaco from "monaco-editor";
+import { StandaloneServices } from "monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js";
+import { INotificationService } from "monaco-editor/esm/vs/platform/notification/common/notification.js";
 import Choices from "choices.js";
 import "choices.js/public/assets/styles/choices.min.css";
 import "./custom-choices.css";
@@ -50,6 +52,7 @@ let tabSize = Math.min(10, Math.max(1, parseInt(localStorage.getItem("tabSize"))
 
 // status bar
 const statusLeft = document.getElementById("status-left");
+const chordStatusEl = document.getElementById("chord-status");
 const lineColEl = document.getElementById("line-col");
 const zoomLevelEl = document.getElementById("zoom-level");
 const lineEndingEl = document.getElementById("line-ending");
@@ -494,6 +497,34 @@ function getAllCSSVars(prefix = "--", fromLast = true) {
   return result;
 }
 
+const MONAPAD_CODE_BLOCK_LANGUAGE_RULES = [
+  [/^\s*```\s*(javascript|js|jsx)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "javascript" }],
+  [/^\s*```\s*(typescript|ts|tsx)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "typescript" }],
+  [/^\s*```\s*(html)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "html" }],
+  [/^\s*```\s*(css)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "css" }],
+  [/^\s*```\s*(scss|sass)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "scss" }],
+  [/^\s*```\s*(less)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "less" }],
+  [/^\s*```\s*(json|jsonc)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "json" }],
+  [/^\s*```\s*(markdown|md)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "markdown" }],
+  [/^\s*```\s*(xml|svg)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "xml" }],
+  [/^\s*```\s*(yaml|yml)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "yaml" }],
+  [/^\s*```\s*(python|py)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "python" }],
+  [/^\s*```\s*(shell|sh|bash|zsh)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "shell" }],
+  [/^\s*```\s*(powershell|ps1)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "powershell" }],
+  [/^\s*```\s*(bat|cmd)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "bat" }],
+  [/^\s*```\s*(sql)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "sql" }],
+  [/^\s*```\s*(c)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "cpp" }],
+  [/^\s*```\s*(cpp|c\+\+)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "cpp" }],
+  [/^\s*```\s*(csharp|cs|c#)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "csharp" }],
+  [/^\s*```\s*(java)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "java" }],
+  [/^\s*```\s*(php)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "php" }],
+  [/^\s*```\s*(ruby|rb)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "ruby" }],
+  [/^\s*```\s*(go|golang)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "go" }],
+  [/^\s*```\s*(rust|rs)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "rust" }],
+  [/^\s*```\s*(dockerfile|docker)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "dockerfile" }],
+  [/^\s*```\s*(ini|properties)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "ini" }],
+];
+
 // define monapad language
 monaco.languages.register({ id: "monapad" });
 monaco.languages.setMonarchTokensProvider("monapad", {
@@ -506,6 +537,7 @@ monaco.languages.setMonarchTokensProvider("monapad", {
       [/^\s*##\s[^#].*/, "heading-2"], // ## heading
       [/^\s*###\s[^#].*/, "heading-3"], // ### heading
       [/^\s*>\s.*/, "block-quote"], // > blockquote
+      ...MONAPAD_CODE_BLOCK_LANGUAGE_RULES,
       [/```/, { token: "code-block-fence", next: "@codeblock" }], // code block
       [/`[^`]*`/, "inline-code"], // inline code block
     ],
@@ -513,6 +545,12 @@ monaco.languages.setMonarchTokensProvider("monapad", {
     codeblock: [
       [/```/, { token: "code-block-fence", next: "@pop" }],
       [/.*$/, "code-block-content"],
+    ],
+
+    codeblockEmbedded: [
+      [/```\s*$/, { token: "code-block-fence", next: "@pop", nextEmbedded: "@pop" }],
+      [/[^`]+/, "code-block-content"],
+      [/`/, "code-block-content"],
     ],
   },
 });
@@ -762,6 +800,82 @@ monacoEditor = monaco.editor.create(editor, {
   copyWithSyntaxHighlighting: false,
   cursorSmoothCaretAnimation: false,
 });
+
+function installMonacoStatusBarBridge() {
+  if (!chordStatusEl) return;
+
+  try {
+    const notificationService = StandaloneServices.get(INotificationService);
+    if (!notificationService || notificationService.__monapadStatusBarBridgeInstalled) return;
+
+    const originalStatus =
+      typeof notificationService.status === "function" ? notificationService.status.bind(notificationService) : null;
+    let statusSeq = 0;
+    let hideTimer = null;
+
+    function clearStatus(id) {
+      if (id !== statusSeq) return;
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+      chordStatusEl.textContent = "";
+      chordStatusEl.title = "";
+    }
+
+    notificationService.status = (message, options = {}) => {
+      const id = ++statusSeq;
+      const text = localizeMonacoStatusMessage(message);
+      const originalHandle = originalStatus ? originalStatus(message, options) : null;
+
+      if (hideTimer) {
+        clearTimeout(hideTimer);
+        hideTimer = null;
+      }
+
+      chordStatusEl.textContent = text;
+      chordStatusEl.title = text;
+
+      if (typeof options.hideAfter === "number" && options.hideAfter > 0) {
+        hideTimer = setTimeout(() => clearStatus(id), options.hideAfter);
+      }
+
+      return {
+        close() {
+          originalHandle?.close?.();
+          clearStatus(id);
+        },
+      };
+    };
+
+    notificationService.__monapadStatusBarBridgeInstalled = true;
+  } catch (err) {
+    console.warn("Failed to install Monaco status bar bridge:", err);
+  }
+}
+
+installMonacoStatusBarBridge();
+
+function localizeMonacoStatusMessage(message) {
+  const text = message == null ? "" : String(message);
+
+  let match = text.match(/^\((.*)\) was pressed\. Waiting for second key of chord\.\.\.$/);
+  if (match) {
+    return i18next.t("statusBar.chordFirst", { first: match[1] });
+  }
+
+  match = text.match(/^\((.*)\) was pressed\. Waiting for next key of chord\.\.\.$/);
+  if (match) {
+    return i18next.t("statusBar.chordNext", { keys: match[1] });
+  }
+
+  match = text.match(/^The key combination \((.*)\) is not a command\.$/);
+  if (match) {
+    return i18next.t("statusBar.chordMissing", { keys: match[1] });
+  }
+
+  return text;
+}
 
 // Japanese word handling
 let setKuromojiEnabled = () => {};
@@ -2326,18 +2440,20 @@ document.getElementById("saveAsFileBtn").addEventListener("click", saveAsFile);
 // });
 
 // about button
+function closeAboutModal() {
+  confirmBox.style.display = "none";
+  about.style.display = "none";
+  isModalDisplayed = false;
+  monacoEditor?.focus();
+}
+
 document.getElementById("aboutBtn").addEventListener("click", () => {
   confirmBox.style.display = "flex";
   about.style.display = "flex";
   isModalDisplayed = true;
 });
 
-document.getElementById("about-close").addEventListener("click", () => {
-  confirmBox.style.display = "none";
-  about.style.display = "none";
-  isModalDisplayed = false;
-  monacoEditor?.focus();
-});
+document.getElementById("about-close").addEventListener("click", closeAboutModal);
 
 function stopDeviceShareCountdown() {
   if (deviceShareCountdownTimer) {
@@ -4700,6 +4816,78 @@ customContextMenu.addEventListener("mousedown", (e) => {
 });
 
 // settings menu display
+function isSettingsMenuOpen() {
+  return settingsMenu.style.display === "block";
+}
+
+function closeSettingsMenu() {
+  settingsMenu.style.display = "none";
+  langChoices.hideDropdown();
+  fontChoices.hideDropdown();
+  monacoEditor?.focus();
+}
+
+function isElementOpen(element) {
+  return element?.style.display && element.style.display !== "none";
+}
+
+function closeContextMenus() {
+  let closed = false;
+
+  if (isElementOpen(customContextMenu)) {
+    customContextMenu.style.display = "none";
+    closed = true;
+  }
+
+  if (isElementOpen(tabContextMenu)) {
+    tabContextMenu.style.display = "none";
+    rightClickedTab = null;
+    closed = true;
+  }
+
+  if (closed) monacoEditor?.focus();
+  return closed;
+}
+
+function closeAppMenus() {
+  if (!isElementOpen(menu) && !isElementOpen(themeMenu) && !isElementOpen(recentMenu)) return false;
+
+  menu.style.display = "none";
+  themeMenu.style.display = "none";
+  recentMenu.style.display = "none";
+  menuButton.style.pointerEvents = "auto";
+  monacoEditor?.focus();
+  return true;
+}
+
+async function closeTopOverlayByEscape() {
+  if (isElementOpen(confirmSave) || isElementOpen(confirmWindow) || isElementOpen(autosaveRestore)) {
+    return false;
+  }
+
+  if (isElementOpen(deviceShareModal)) {
+    await closeDeviceShareModal();
+    return true;
+  }
+
+  if (isElementOpen(about)) {
+    closeAboutModal();
+    return true;
+  }
+
+  if (isModalDisplayed) return false;
+
+  if (closeContextMenus()) return true;
+  if (closeAppMenus()) return true;
+
+  if (isSettingsMenuOpen()) {
+    closeSettingsMenu();
+    return true;
+  }
+
+  return false;
+}
+
 settingsButton.addEventListener("click", (e) => {
   e.stopPropagation();
   settingsMenu.style.display = "block";
@@ -4707,7 +4895,7 @@ settingsButton.addEventListener("click", (e) => {
   menuButton.style.pointerEvents = "auto";
 });
 editor.addEventListener("click", () => {
-  settingsMenu.style.display = "none";
+  closeSettingsMenu();
 });
 settingsMenu.addEventListener("click", (e) => {
   langChoices.hideDropdown();
@@ -4735,6 +4923,14 @@ settingsMenu.addEventListener("focusin", () => {
 
 // shortcuts
 window.addEventListener("keydown", async (e) => {
+  if (e.code === "Escape" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    if (await closeTopOverlayByEscape()) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+  }
+
   // Ctrl + S (+ Shift)
   if ((e.ctrlKey || e.metaKey) && e.code === "KeyS") {
     e.preventDefault();

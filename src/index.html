@@ -195,7 +195,7 @@
       .monaco-editor .bracket-highlighting-0,
       .monaco-editor .bracket-highlighting-1,
       .monaco-editor .bracket-highlighting-2 {
-        color: #ce9178 !important;
+        /* color: #ce9178 !important; */
       }
       .monaco-editor .marker-transparent {
         opacity: 0.25;
@@ -887,6 +887,12 @@
       #status-right span {
         margin-left: 20px;
         white-space: nowrap;
+      }
+      #chord-status {
+        max-width: min(42vw, 520px);
+        overflow: hidden;
+        color: var(--grayOut);
+        text-overflow: ellipsis;
       }
       #zoom-level {
         width: 30px;
@@ -1638,6 +1644,7 @@
           <div id="status-left"></div>
         </div>
         <div id="status-right">
+          <span id="chord-status"></span>
           <span id="line-col"></span>
           <span id="zoom-level"></span>
           <span id="line-ending"></span>

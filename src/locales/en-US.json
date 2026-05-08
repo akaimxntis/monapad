@@ -6,7 +6,10 @@
     "line": "Ln",
     "col": "Col",
     "selection": "({{count}} selected)",
-    "encodingTooltip": "This editor supports only UTF-8.\nIf you want to use other encodings, please convert them to UTF-8 before opening."
+    "encodingTooltip": "This editor supports only UTF-8.\nIf you want to use other encodings, please convert them to UTF-8 before opening.",
+    "chordFirst": "({{first}}) was pressed. Waiting for second key of chord...",
+    "chordNext": "({{keys}}) was pressed. Waiting for next key of chord...",
+    "chordMissing": "The key combination ({{keys}}) is not a command."
   },
   "menu": {
     "new": "New",
