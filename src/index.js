@@ -1703,6 +1703,9 @@ const fontChoices = new Choices(fontFamilySelect, {
   allowHTML: true,
   position: "bottom",
 });
+let fontPreviewFrameId = null;
+let fontPreviewScrollTimer = null;
+let fontPreviewSearchTimer = null;
 
 // do not close menu when input box is clicked
 fontChoices.input.element.addEventListener("mousedown", (e) => {
@@ -1711,6 +1714,25 @@ fontChoices.input.element.addEventListener("mousedown", (e) => {
 fontChoices.input.element.addEventListener("click", (e) => {
   e.stopPropagation();
 });
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => {
+    switch (char) {
+      case "&":
+        return "&amp;";
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case '"':
+        return "&quot;";
+      case "'":
+        return "&#39;";
+      default:
+        return char;
+    }
+  });
+}
 
 // scroll to bottom of settings menu whenever langSwitcher dropdown is shown
 function scrollToBottomOfSettingsMenu() {
@@ -1737,6 +1759,76 @@ function scrollToSelectedOption(choicesInstance) {
       selectedOption.classList.add("is-highlighted");
     });
   }
+}
+
+function getFontChoicesDropdown() {
+  return fontChoices.containerOuter.element.querySelector(".choices__list--dropdown");
+}
+
+function applyVisibleFontPreviews() {
+  fontPreviewFrameId = null;
+
+  const dropdown = getFontChoicesDropdown();
+  if (!dropdown || !dropdown.classList.contains("is-active")) return;
+
+  const dropdownRect = dropdown.getBoundingClientRect();
+  if (dropdownRect.width <= 0 || dropdownRect.height <= 0) return;
+
+  const previewSpans = dropdown.querySelectorAll("[data-font-preview]:not([data-font-preview-applied])");
+  for (const span of previewSpans) {
+    const item = span.closest(".choices__item");
+    if (!item) continue;
+
+    const itemRect = item.getBoundingClientRect();
+    const isVisible = itemRect.bottom > dropdownRect.top && itemRect.top < dropdownRect.bottom;
+    if (!isVisible) continue;
+
+    const fontName = span.dataset.fontPreview;
+    if (!fontName) continue;
+
+    span.style.fontFamily = `"${fontName.replace(/"/g, '\\"')}", "Figtree", sans-serif`;
+    span.dataset.fontPreviewApplied = "true";
+  }
+}
+
+function scheduleVisibleFontPreviews() {
+  if (fontPreviewFrameId !== null) cancelAnimationFrame(fontPreviewFrameId);
+  fontPreviewFrameId = requestAnimationFrame(() => {
+    applyVisibleFontPreviews();
+    fontPreviewFrameId = requestAnimationFrame(applyVisibleFontPreviews);
+  });
+}
+
+function resetFontPreviewApplications() {
+  const dropdown = getFontChoicesDropdown();
+  if (!dropdown) return;
+
+  dropdown.querySelectorAll("[data-font-preview-applied]").forEach((span) => {
+    span.removeAttribute("data-font-preview-applied");
+    span.style.fontFamily = "";
+  });
+}
+
+function bindLazyFontPreviewEvents() {
+  const dropdown = getFontChoicesDropdown();
+  const dropdownList = dropdown?.querySelector(".choices__list");
+  if (!dropdown || dropdown.dataset.lazyFontPreviewBound === "true") return;
+
+  dropdown.dataset.lazyFontPreviewBound = "true";
+
+  dropdownList?.addEventListener("scroll", () => {
+    scheduleVisibleFontPreviews();
+    clearTimeout(fontPreviewScrollTimer);
+    fontPreviewScrollTimer = setTimeout(scheduleVisibleFontPreviews, 80);
+  });
+
+  fontChoices.input.element.addEventListener("input", () => {
+    clearTimeout(fontPreviewSearchTimer);
+    fontPreviewSearchTimer = setTimeout(() => {
+      resetFontPreviewApplications();
+      scheduleVisibleFontPreviews();
+    }, 40);
+  });
 }
 
 // scroll fontFamilySelect to top of settingsMenu when its dropdown is not fully inside it
@@ -1767,12 +1859,14 @@ function onDropdownShown(event) {
   // === Font Selector ===
   if (target === fontFamilySelect) {
     scrollToSelectedOption(fontChoices);
+    bindLazyFontPreviewEvents();
 
     if (scrollLocked) {
       scrollAdjustQueue.push(adjustDropdownScroll);
     } else {
       adjustDropdownScroll();
     }
+    scheduleVisibleFontPreviews();
   }
 
   // === Language Selector ===
@@ -1787,30 +1881,15 @@ function onDropdownShown(event) {
   }
 }
 fontFamilySelect.addEventListener("showDropdown", onDropdownShown);
+fontFamilySelect.addEventListener("hideDropdown", () => {
+  if (fontPreviewFrameId !== null) {
+    cancelAnimationFrame(fontPreviewFrameId);
+    fontPreviewFrameId = null;
+  }
+  clearTimeout(fontPreviewScrollTimer);
+  clearTimeout(fontPreviewSearchTimer);
+});
 langSwitcher.addEventListener("showDropdown", onDropdownShown);
-
-// make style tag has font styles set to each class
-function injectFontPreviewStyles(fontList) {
-  const style = document.createElement("style");
-  document.head.appendChild(style);
-
-  const cssLines = fontList.map((fontName) => {
-    const safeClass = fontName
-      .trim()
-      .replace(/\s+/g, "-")
-      .toLowerCase()
-      .replace(/[^a-z0-9\-_]/gi, "");
-    const fontCSS = `"${fontName}", 'Figtree', sans-serif`;
-
-    return `
-      .choices__list--dropdown .font-preview-${safeClass} {
-        font-family: ${fontCSS};
-      }
-    `;
-  });
-
-  style.textContent = cssLines.join("\n");
-}
 
 // get font using font-list and apply on launch
 window.electronAPI.getFonts().then((fonts) => {
@@ -1823,20 +1902,12 @@ window.electronAPI.getFonts().then((fonts) => {
 
   const sortedFonts = cleanedFonts.sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
 
-  // create style tag
-  injectFontPreviewStyles(sortedFonts);
-
   // apply to choices by adding class
   fontChoices.setChoices(
     sortedFonts.map((fontName) => {
-      const safeClass = fontName
-        .trim()
-        .replace(/\s+/g, "-")
-        .toLowerCase()
-        .replace(/[^a-z0-9\-_]/gi, "");
       return {
         value: fontName,
-        label: `<span class="font-preview-${safeClass}">${fontName}</span>`,
+        label: `<span data-font-preview="${escapeHtml(fontName)}">${escapeHtml(fontName)}</span>`,
         html: true,
       };
     }),
