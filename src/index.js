@@ -538,12 +538,13 @@ monaco.languages.setMonarchTokensProvider("monapad", {
       [/^\s*###\s[^#].*/, "heading-3"], // ### heading
       [/^\s*>\s.*/, "block-quote"], // > blockquote
       ...MONAPAD_CODE_BLOCK_LANGUAGE_RULES,
-      [/```/, { token: "code-block-fence", next: "@codeblock" }], // code block
-      [/`[^`]*`/, "inline-code"], // inline code block
+      [/^\s*```\s*((?:\w|[\/\-#])+).*$/, { token: "code-block-fence", next: "@codeblock" }], // code block with unsupported language
+      [/^\s*```\s*$/, { token: "code-block-fence", next: "@codeblock" }], // code block
+      [/`([^\\`]|\\.)+`/, "inline-code"], // inline code block
     ],
 
     codeblock: [
-      [/```/, { token: "code-block-fence", next: "@pop" }],
+      [/^\s*```\s*$/, { token: "code-block-fence", next: "@pop" }],
       [/.*$/, "code-block-content"],
     ],
 
