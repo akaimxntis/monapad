@@ -58,6 +58,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   readAutosaveTrash: (trashId) => ipcRenderer.invoke("autosave:read-trash", trashId),
   deleteAutosaveTrash: (trashId) => ipcRenderer.invoke("autosave:delete-trash", trashId),
   getAutosaveTrashPreviousPath: () => ipcRenderer.invoke("autosave:get-trash-previous-path"),
+  createNote: (payload) => ipcRenderer.invoke("notes:create", payload),
+  writeNote: (payload) => ipcRenderer.invoke("notes:write", payload),
+  readNote: (noteId) => ipcRenderer.invoke("notes:read", noteId),
+  deleteNote: (noteId) => ipcRenderer.invoke("notes:delete", noteId),
+  noteExists: (noteId) => ipcRenderer.invoke("notes:exists", noteId),
+  listNotes: () => ipcRenderer.invoke("notes:list"),
   onWindowFocus: (callback) => ipcRenderer.on("window-focus", (event, focused) => callback(focused)),
   onAttemptCloseWindow: (callback) => ipcRenderer.on("attempt-close-window", callback),
 

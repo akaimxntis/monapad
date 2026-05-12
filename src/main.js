@@ -809,14 +809,187 @@ ipcMain.handle("autosave:get-trash-previous-path", async () => {
   return dirs.trashPrevious;
 });
 
+function getNotesDir() {
+  return path.join(app.getPath("userData"), "notes");
+}
+
+function getNotesIndexPath() {
+  return path.join(getNotesDir(), "notes.json");
+}
+
+async function ensureNotesDir() {
+  const notesDir = getNotesDir();
+  await fs.promises.mkdir(notesDir, { recursive: true });
+  return notesDir;
+}
+
+function isSafeNoteId(id) {
+  return typeof id === "string" && /^[a-f0-9-]{36}$/i.test(id);
+}
+
+async function readNotesIndex() {
+  await ensureNotesDir();
+  const index = await readJsonFile(getNotesIndexPath());
+  if (!index || typeof index !== "object") {
+    return { version: 1, notes: [] };
+  }
+
+  return {
+    version: 1,
+    notes: Array.isArray(index.notes) ? index.notes.filter((note) => isSafeNoteId(note?.id)) : [],
+  };
+}
+
+async function writeNotesIndex(index) {
+  await ensureNotesDir();
+  const targetPath = getNotesIndexPath();
+  const tempPath = `${targetPath}.${process.pid}.tmp`;
+  await fs.promises.writeFile(tempPath, JSON.stringify(index, null, 2), "utf8");
+  await fs.promises.rename(tempPath, targetPath);
+}
+
+function getNoteTitleFromContent(content) {
+  const firstTextLine = String(content || "")
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  return firstTextLine || "New Note";
+}
+
+async function upsertNoteIndexEntry(noteId, content, extra = {}) {
+  const notesDir = await ensureNotesDir();
+  const index = await readNotesIndex();
+  const now = Date.now();
+  const title = extra.title || getNoteTitleFromContent(content);
+  const contentBytes = Buffer.byteLength(typeof content === "string" ? content : "", "utf8");
+  const existing = index.notes.find((note) => note.id === noteId);
+  const maxOrder = index.notes.reduce((max, note) => Math.max(max, Number.isFinite(note.order) ? note.order : -1), -1);
+  const nextEntry = {
+    id: noteId,
+    fileName: `${noteId}.txt`,
+    title,
+    createdAt: existing?.createdAt || extra.createdAt || now,
+    updatedAt: now,
+    pinned: existing?.pinned || false,
+    order: Number.isFinite(existing?.order) ? existing.order : maxOrder + 1,
+    contentBytes,
+  };
+
+  if (existing) {
+    Object.assign(existing, nextEntry);
+  } else {
+    index.notes.push(nextEntry);
+  }
+
+  await writeNotesIndex(index);
+  return { ...nextEntry, path: path.join(notesDir, nextEntry.fileName) };
+}
+
+ipcMain.handle("notes:create", async (event, payload = {}) => {
+  try {
+    const notesDir = await ensureNotesDir();
+    const noteId = crypto.randomUUID();
+    const content = typeof payload.content === "string" ? payload.content : "";
+    const notePath = path.join(notesDir, `${noteId}.txt`);
+    await fs.promises.writeFile(notePath, content, "utf8");
+    const meta = await upsertNoteIndexEntry(noteId, content, { title: payload.title });
+    return { success: true, id: noteId, path: notePath, meta };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:write", async (event, payload = {}) => {
+  try {
+    if (!isSafeNoteId(payload.noteId)) return { success: false, error: "Invalid note id." };
+    const notesDir = await ensureNotesDir();
+    const content = typeof payload.content === "string" ? payload.content : "";
+    const notePath = path.join(notesDir, `${payload.noteId}.txt`);
+    await fs.promises.writeFile(notePath, content, "utf8");
+    const meta = await upsertNoteIndexEntry(payload.noteId, content, { title: payload.title });
+    return { success: true, id: payload.noteId, path: notePath, meta };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:read", async (event, noteId) => {
+  try {
+    if (!isSafeNoteId(noteId)) return { exists: false };
+    const notesDir = await ensureNotesDir();
+    const notePath = path.join(notesDir, `${noteId}.txt`);
+    const content = await fs.promises.readFile(notePath, "utf8");
+    const index = await readNotesIndex();
+    const meta = index.notes.find((note) => note.id === noteId) || (await upsertNoteIndexEntry(noteId, content));
+    return { exists: true, id: noteId, path: notePath, content, meta };
+  } catch {
+    return { exists: false };
+  }
+});
+
+ipcMain.handle("notes:exists", async (event, noteId) => {
+  try {
+    if (!isSafeNoteId(noteId)) return false;
+    await fs.promises.access(path.join(await ensureNotesDir(), `${noteId}.txt`), fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
+});
+
+ipcMain.handle("notes:delete", async (event, noteId) => {
+  try {
+    if (!isSafeNoteId(noteId)) return { success: false, error: "Invalid note id." };
+    const notesDir = await ensureNotesDir();
+    await removeFileIfExists(path.join(notesDir, `${noteId}.txt`));
+    const index = await readNotesIndex();
+    index.notes = index.notes.filter((note) => note.id !== noteId);
+    await writeNotesIndex(index);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:list", async () => {
+  const index = await readNotesIndex();
+  return index.notes;
+});
+
+async function cleanupEmptyNotes() {
+  const notesDir = await ensureNotesDir();
+  const index = await readNotesIndex();
+  const nextNotes = [];
+
+  for (const note of index.notes) {
+    if (!isSafeNoteId(note.id)) continue;
+    const notePath = path.join(notesDir, `${note.id}.txt`);
+    try {
+      const content = await fs.promises.readFile(notePath, "utf8");
+      if (content.trim()) {
+        nextNotes.push(note);
+      } else {
+        await removeFileIfExists(notePath);
+      }
+    } catch {
+      // Drop missing files from the index.
+    }
+  }
+
+  if (nextNotes.length !== index.notes.length) {
+    index.notes = nextNotes;
+    await writeNotesIndex(index);
+  }
+}
+
 ipcMain.handle("file:watch", (event, filePath) => {
   if (watchers.has(filePath)) {
     watcherRefCounts.set(filePath, (watcherRefCounts.get(filePath) || 0) + 1);
-    return;
+    return { success: true };
   }
 
   try {
-    const watcher = fs.watch(filePath, (eventType) => {
+    const scheduleChange = (eventType) => {
       const prev = watchEvents.get(filePath);
 
       // Merge event types (rename has priority)
@@ -837,11 +1010,20 @@ ipcMain.handle("file:watch", (event, filePath) => {
         if (finalType === "rename") {
           try {
             await fs.promises.access(filePath, fs.constants.F_OK);
+            const record = watchers.get(filePath);
+            if (record && !record.fileWatcher) {
+              record.fileWatcher = attachFileWatcher();
+            }
             sendToAllWindows("file:changed", {
               filePath,
               eventType: "change",
             });
           } catch {
+            const record = watchers.get(filePath);
+            if (record?.fileWatcher) {
+              record.fileWatcher.close();
+              record.fileWatcher = null;
+            }
             sendToAllWindows("file:changed", {
               filePath,
               eventType: "rename",
@@ -856,12 +1038,40 @@ ipcMain.handle("file:watch", (event, filePath) => {
       }, 200);
 
       watchTimeouts.set(filePath, timeout);
+    };
+
+    const attachFileWatcher = () => {
+      try {
+        return fs.watch(filePath, (eventType) => {
+          scheduleChange(eventType);
+        });
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+        log.warn("file watch target missing, falling back to parent directory:", filePath);
+        return null;
+      }
+    };
+
+    let fileWatcher = null;
+    fileWatcher = attachFileWatcher();
+
+    const dirPath = path.dirname(filePath);
+    const baseName = path.basename(filePath);
+    const dirWatcher = fs.watch(dirPath, (eventType, filename) => {
+      if (filename && filename.toString() !== baseName) return;
+      const record = watchers.get(filePath);
+      if (record && !record.fileWatcher && fs.existsSync(filePath)) {
+        record.fileWatcher = attachFileWatcher();
+      }
+      scheduleChange(eventType === "rename" ? "rename" : "change");
     });
 
-    watchers.set(filePath, watcher);
+    watchers.set(filePath, { fileWatcher, dirWatcher });
     watcherRefCounts.set(filePath, 1);
+    return { success: true };
   } catch (err) {
     log.error("watch error:", err);
+    return { success: false, error: err.message };
   }
 });
 
@@ -1180,7 +1390,12 @@ ipcMain.handle("file:unwatch", (event, filePath) => {
 
   const watcher = watchers.get(filePath);
   if (watcher) {
-    watcher.close();
+    if (typeof watcher.close === "function") {
+      watcher.close();
+    } else {
+      watcher.fileWatcher?.close();
+      watcher.dirWatcher?.close();
+    }
     watchers.delete(filePath);
   }
 
@@ -1469,6 +1684,7 @@ if (!gotTheLock) {
     rotateAutosaveTrash()
       .then(() => cleanupAutosaveStorage())
       .catch((error) => log.warn("[autosave] init failed:", error.message));
+    cleanupEmptyNotes().catch((error) => log.warn("[notes] cleanup failed:", error.message));
 
     createWindow();
 

@@ -702,14 +702,22 @@
         max-width: calc(100% - 17px);
       }
       /* warned name span */
-      .tab .name.warn,
-      .tab:hover .name.warn {
+      .tab .name.warn {
         text-decoration: line-through;
         color: var(--warn);
+        opacity: 0.5;
+      }
+      .tab:hover .name.warn,
+      .tab.active .name.warn {
         opacity: 1;
       }
-      .tab:not(.active) .name.warn {
+      .tab.note .name {
+        color: var(--highlight);
         opacity: 0.5;
+      }
+      .tab.note:hover .name,
+      .tab.note.active .name {
+        opacity: 1;
       }
       /* reload button */
       .tab .reload-button {
@@ -1498,6 +1506,10 @@
           <span class="label">New</span>
           <span class="shortcut">Ctrl + T</span>
         </button>
+        <button id="newNoteBtn">
+          <span class="label">New Note</span>
+          <span class="shortcut">Ctrl + Alt + T</span>
+        </button>
         <button id="newWindowBtn">
           <span class="label">New Window</span>
           <span class="shortcut">Ctrl + N</span>
@@ -1525,6 +1537,10 @@
         <button id="saveAsFileBtn">
           <span class="label">Save As</span>
           <span class="shortcut">Ctrl + Shift + S</span>
+        </button>
+        <button id="saveAsNoteBtn">
+          <span class="label">Save As Note</span>
+          <span class="shortcut">Ctrl + Alt + S</span>
         </button>
         <div class="hr"></div>
         <button id="triggerFindBtn">

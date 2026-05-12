@@ -22,6 +22,8 @@ const openRecentBtn = document.getElementById("openRecent");
 const recentMenu = document.getElementById("recent-menu");
 const newWindowBtn = document.getElementById("newWindowBtn");
 const newTabBtn = document.getElementById("newTabBtn");
+const newNoteBtn = document.getElementById("newNoteBtn");
+const saveAsNoteBtn = document.getElementById("saveAsNoteBtn");
 const settingsButton = document.getElementById("settingsBtn");
 const settingsMenu = document.getElementById("settings-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
@@ -258,9 +260,25 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
   newTabData.wordWrap = payload.wordWrap;
   newTabData.isMarkdown = payload.isMarkdown;
   newTabData.draftId = payload.draftId || newTabData.draftId;
+  if (payload.isNote) {
+    newTabData.isNote = true;
+    newTabData.noteId = payload.noteId;
+    newTabData.notePath = payload.notePath;
+    newTabData.noteTitle = payload.noteTitle || payload.name;
+    newTabData.noteCreatedAt = payload.noteCreatedAt;
+    newTabData.noteUpdatedAt = payload.noteUpdatedAt;
+    newTabData.noteDirty = false;
+    newTabData.draftId = null;
+    newTabData.path = null;
+    newTabData.isFileSaved = true;
+    newTabData.originalContent = payload.content;
+    newTabData.element.classList.add("note");
+    newTabData.element.querySelector(".close")?.classList.remove("show-unsaved");
+    updateNoteTabTitle(newTabData, payload.content);
+  }
 
   // restore save state
-  if (!payload.isFileSaved) {
+  if (!payload.isNote && !payload.isFileSaved) {
     const close = newTabData.element.querySelector(".close");
     if (close) close.classList.add("show-unsaved");
     await windowIdReady;
@@ -308,11 +326,13 @@ i18next
 function updateMenuLabels() {
   // menu
   document.querySelector("#newTabBtn .label").textContent = i18next.t("menu.new");
+  document.querySelector("#newNoteBtn .label").textContent = i18next.t("menu.newNote");
   document.querySelector("#newWindowBtn .label").textContent = i18next.t("menu.newWindow");
   document.querySelector("#openFileBtn .label").textContent = i18next.t("menu.open");
   document.querySelector("#openRecent .btn-text").textContent = i18next.t("menu.openRecent");
   document.querySelector("#saveFileBtn .label").textContent = i18next.t("menu.save");
   document.querySelector("#saveAsFileBtn .label").textContent = i18next.t("menu.saveAs");
+  document.querySelector("#saveAsNoteBtn .label").textContent = i18next.t("menu.saveAsNote");
   document.querySelector("#triggerFindBtn .label").textContent = i18next.t("menu.find");
   document.querySelector("#triggerReplaceBtn .label").textContent = i18next.t("menu.replace");
   document.querySelector("#triggerGoToLineBtn .label").textContent = i18next.t("menu.goToLine");
@@ -1389,8 +1409,79 @@ function createAutosaveId() {
 
 function getTabAutosaveKey(tab) {
   if (!tab) return null;
+  if (tab.isNote) return tab.noteId ? `note:${tab.noteId}` : null;
   if (tab.path) return `file:${tab.path}`;
   return tab.draftId ? `draft:${tab.draftId}` : null;
+}
+
+function getNoteTitleFromContent(content) {
+  const firstTextLine = String(content || "")
+    .split(/\r\n|\r|\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  return firstTextLine || "New Note";
+}
+
+function formatNoteUpdatedAt(updatedAt) {
+  if (!updatedAt) return "";
+  try {
+    return new Date(updatedAt).toLocaleString();
+  } catch {
+    return "";
+  }
+}
+
+function updateNoteTabTitle(tab, content = null) {
+  if (!tab?.isNote) return;
+  const title = getNoteTitleFromContent(content ?? tab.model?.getValue() ?? tab.content ?? "");
+  tab.name = title;
+  tab.noteTitle = title;
+  const nameSpan = tab.element?.querySelector(".name");
+  if (nameSpan) {
+    nameSpan.textContent = title;
+    nameSpan.title = title;
+  }
+}
+
+async function writeNoteTab(tab, content = null, force = false) {
+  if (!tab?.isNote || !tab.noteId) return false;
+  const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
+  if (!force && !tab.noteDirty && nextContent === tab.originalContent) return true;
+
+  updateNoteTabTitle(tab, nextContent);
+  try {
+    const result = await window.electronAPI.writeNote({
+      noteId: tab.noteId,
+      title: tab.noteTitle,
+      content: nextContent,
+    });
+    if (!result?.success) return false;
+
+    tab.notePath = result.path || tab.notePath;
+    tab.noteUpdatedAt = result.meta?.updatedAt || Date.now();
+    tab.noteCreatedAt = result.meta?.createdAt || tab.noteCreatedAt;
+    tab.originalContent = nextContent;
+    tab.content = nextContent;
+    tab.isFileSaved = true;
+    tab.noteDirty = false;
+    const close = tab.element?.querySelector(".close");
+    if (close) close.classList.remove("show-unsaved");
+    if (tab === currentTab) updateStatusBar();
+    return true;
+  } catch (error) {
+    console.warn("Failed to write note:", error);
+    return false;
+  }
+}
+
+async function deleteNoteTabStorage(tab) {
+  if (!tab?.isNote || !tab.noteId) return;
+  clearAutosaveTimer(tab);
+  try {
+    await window.electronAPI.deleteNote(tab.noteId);
+  } catch (error) {
+    console.warn("Failed to delete empty note:", error);
+  }
 }
 
 function clearAutosaveTimer(tab) {
@@ -1408,6 +1499,9 @@ function clearAutosaveTimer(tab) {
 function shouldAutosaveTab(tab, content = null) {
   if (!tab || tab._autosaveDisabled) return false;
   const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
+  if (tab.isNote) {
+    return Boolean(tab.noteId) && (tab.noteDirty || nextContent !== tab.originalContent);
+  }
   if (!nextContent.trim()) return false;
   if (!hasUnsavedChanges(tab, nextContent)) return false;
   return new Blob([nextContent]).size <= AUTOSAVE_MAX_ITEM_BYTES;
@@ -1419,7 +1513,9 @@ async function writeTabAutosave(tab, content = null) {
   if (!shouldAutosaveTab(tab, nextContent)) return;
 
   try {
-    if (tab.path) {
+    if (tab.isNote) {
+      await writeNoteTab(tab, nextContent, true);
+    } else if (tab.path) {
       await window.electronAPI.writeAutosave({
         kind: "file",
         filePath: tab.path,
@@ -1486,6 +1582,7 @@ function scheduleAllUnsavedTabAutosaves() {
 async function deleteTabAutosave(tab) {
   if (!tab) return;
   clearAutosaveTimer(tab);
+  if (tab.isNote) return;
 
   try {
     if (tab.path) {
@@ -1503,6 +1600,19 @@ async function cleanupSavedTabAutosaves(tabsToCleanup = tabData) {
     const content = tab?.model?.getValue() ?? tab?.content ?? "";
     if (!hasUnsavedChanges(tab, content)) {
       await deleteTabAutosave(tab);
+    }
+  }
+}
+
+async function flushNoteTabs(tabsToFlush = tabData) {
+  for (const tab of tabsToFlush) {
+    if (tab?.isNote) {
+      const content = tab.model?.getValue() ?? tab.content ?? "";
+      if (content.trim()) {
+        await writeNoteTab(tab, content, true);
+      } else {
+        await deleteNoteTabStorage(tab);
+      }
     }
   }
 }
@@ -2296,10 +2406,9 @@ window.addEventListener("resize", () => {
 window.addEventListener("wheel", updateMenuPositions, { passive: true });
 
 // recent menu display
-openRecentBtn.addEventListener("mouseenter", () => {
-  populateRecentMenu();
-  const recent = JSON.parse(localStorage.getItem("recentFiles") || "[]");
-  if (recent.length > 0) {
+openRecentBtn.addEventListener("mouseenter", async () => {
+  const displayCount = await populateRecentMenu();
+  if (displayCount > 0) {
     recentMenu.style.display = "inline-block";
     updateMenuPositions();
   }
@@ -2503,6 +2612,7 @@ window.electronAPI.onCssFileUpdated(async (path) => {
 document.getElementById("openFileBtn").addEventListener("click", openFile);
 document.getElementById("saveFileBtn").addEventListener("click", saveFile);
 document.getElementById("saveAsFileBtn").addEventListener("click", saveAsFile);
+saveAsNoteBtn.addEventListener("click", saveAsNote);
 
 // print button
 // document.getElementById("print-button").addEventListener("click", () => {
@@ -2785,7 +2895,11 @@ window.electronAPI.onAttemptCloseWindow(() => {
 });
 
 // add tab (+) button
-addTabButton.onclick = () => {
+addTabButton.onclick = async (e) => {
+  if (e.shiftKey) {
+    await createNewNote();
+    return;
+  }
   createTab();
   switchTab(tabData.at(-1));
 };
@@ -2794,6 +2908,10 @@ newTabBtn.addEventListener("click", (e) => {
   e.preventDefault();
   createTab();
   switchTab(tabData.at(-1));
+});
+newNoteBtn.addEventListener("click", async (e) => {
+  e.preventDefault();
+  await createNewNote();
 });
 
 // tabs hover state
@@ -2907,8 +3025,15 @@ function updateStatusBar() {
   const selectionText =
     totalSelectedLength > 0 ? ` ${i18next.t("statusBar.selection", { count: totalSelectedLength })}` : "";
 
-  statusLeft.textContent = currentFilePath;
-  statusLeft.title = currentFilePath;
+  if (currentTab?.isNote) {
+    const updated = formatNoteUpdatedAt(currentTab.noteUpdatedAt);
+    const noteStatus = updated ? `${updated} | Note: ${currentTab.name}` : `Note: ${currentTab.name}`;
+    statusLeft.textContent = noteStatus;
+    statusLeft.title = currentTab.notePath || noteStatus;
+  } else {
+    statusLeft.textContent = currentFilePath;
+    statusLeft.title = currentFilePath;
+  }
   lineColEl.textContent = `${i18next.t("statusBar.line")} ${position.lineNumber}, ${i18next.t("statusBar.col")} ${
     position.column
   }${selectionText}`;
@@ -3353,6 +3478,12 @@ async function openTabInNewWindow(targetTabData, position) {
     name: targetTabData.name,
     content: targetTabData.model.getValue(),
     path: targetTabData.path,
+    isNote: targetTabData.isNote,
+    noteId: targetTabData.noteId,
+    notePath: targetTabData.notePath,
+    noteTitle: targetTabData.noteTitle,
+    noteCreatedAt: targetTabData.noteCreatedAt,
+    noteUpdatedAt: targetTabData.noteUpdatedAt,
     isFileSaved: targetTabData.isFileSaved,
     originalContent: targetTabData.originalContent,
     fontSize: targetTabData.fontSize,
@@ -3553,10 +3684,143 @@ function createTab(name, content = "", path = null, insertIndex = null) {
   return data;
 }
 
+async function createNoteTab(content = "", insertIndex = null, existingNote = null) {
+  const title = existingNote?.meta?.title || getNoteTitleFromContent(content);
+  let note = existingNote;
+
+  if (!note) {
+    note = await window.electronAPI.createNote({ content, title });
+    if (!note?.success) {
+      console.error("Failed to create note:", note?.error);
+      return null;
+    }
+  }
+
+  const noteContent = typeof note.content === "string" ? note.content : content;
+  const data = createTab(title, noteContent, null, insertIndex);
+  data.isNote = true;
+  data.noteId = note.id;
+  data.notePath = note.path;
+  data.noteTitle = title;
+  data.noteCreatedAt = note.meta?.createdAt || Date.now();
+  data.noteUpdatedAt = note.meta?.updatedAt || Date.now();
+  data.noteDirty = false;
+  data.draftId = null;
+  data.originalContent = noteContent;
+  data.isFileSaved = true;
+  data.element.classList.add("note");
+  data.element.querySelector(".close")?.classList.remove("show-unsaved");
+  updateNoteTabTitle(data, noteContent);
+  return data;
+}
+
+async function createNewNote() {
+  const data = await createNoteTab("");
+  if (data) switchTab(data);
+}
+
+async function saveAsNote() {
+  const active = tabData.find((t) => t.element.classList.contains("active"));
+  if (!active || !monacoEditor) return false;
+
+  const content = monacoEditor.getValue();
+  const note = await window.electronAPI.createNote({ content, title: getNoteTitleFromContent(content) });
+  if (!note?.success) {
+    console.error("Failed to save as note:", note?.error);
+    return false;
+  }
+
+  if (!active.path && !active.isNote) {
+    const previousDraftId = active.draftId;
+    clearAutosaveTimer(active);
+    active.isNote = true;
+    active.noteId = note.id;
+    active.notePath = note.path;
+    active.noteTitle = note.meta?.title || getNoteTitleFromContent(content);
+    active.noteCreatedAt = note.meta?.createdAt || Date.now();
+    active.noteUpdatedAt = note.meta?.updatedAt || Date.now();
+    active.noteDirty = false;
+    active.draftId = null;
+    active.originalContent = content;
+    active.content = content;
+    active.isFileSaved = true;
+    active.element.classList.add("note");
+    active.element.querySelector(".close")?.classList.remove("show-unsaved");
+    updateNoteTabTitle(active, content);
+    if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
+    updateStatusBar();
+    showMessage("file-saved");
+    return true;
+  }
+
+  const newTab = await createNoteTab(content, null, note);
+  if (newTab) {
+    switchTab(newTab);
+    showMessage("file-saved");
+    return true;
+  }
+
+  return false;
+}
+
 // close tab
 async function attemptCloseTab(data) {
   return new Promise(async (resolve) => {
     const tab = data.element;
+
+    if (data.isNote) {
+      const noteContent = data.model?.getValue() ?? data.content ?? "";
+      const shouldDeleteEmptyNote = !noteContent.trim();
+      if (shouldDeleteEmptyNote) {
+        await deleteNoteTabStorage(data);
+      } else {
+        await writeNoteTab(data, noteContent, true);
+      }
+      const tabIndex = tabData.indexOf(data);
+      if (!shouldDeleteEmptyNote) addToRecentlyClosedNote(data.noteId, data.name, tabIndex);
+      clearAutosaveTimer(data);
+
+      const index = tabData.indexOf(data);
+      tabs.removeChild(tab);
+      applyPendingTabsWidthAfterClose();
+      updateTabsCompactClass();
+      if (data.model) data.model.dispose();
+      tabData = tabData.filter((t) => t !== data);
+      scheduleAllUnsavedTabAutosaves();
+      syncRecentlyClosedFilesState();
+
+      if (tab.classList.contains("active")) {
+        if (tabData.length) {
+          const newIndex = index === tabData.length ? Math.max(index - 1, 0) : index;
+          switchTab(tabData[newIndex]);
+          setTimeout(() => monacoEditor?.focus(), 0);
+        } else {
+          currentTab = null;
+          createTab();
+          fixedTabsWidth = null;
+          tabs.style.maxWidth = "";
+          switchTab(tabData[0]);
+          setTimeout(() => monacoEditor?.focus(), 0);
+        }
+      } else {
+        const currentActive = tabData.find((t) => t.element.classList.contains("active"));
+        if (currentActive) {
+          document.querySelectorAll(".tab").forEach((tab) => {
+            tab.classList.remove("prev-active");
+          });
+
+          const prev = currentActive.element.previousElementSibling;
+          if (prev && prev.classList.contains("tab")) {
+            prev.classList.add("prev-active");
+          }
+
+          setTimeout(() => monacoEditor?.focus(), 0);
+        }
+      }
+
+      resolve("closed");
+      return;
+    }
 
     if (!data.isFileSaved) {
       const message = confirmSave.querySelector("p");
@@ -3775,6 +4039,18 @@ function addToRecentlyClosedTrash(trashId, name, tabIndex) {
   updateReopenClosedTabButtonState();
 }
 
+function addToRecentlyClosedNote(noteId, name, tabIndex) {
+  if (!noteId) return;
+
+  recentlyClosedFiles = recentlyClosedFiles.filter((item) => item.type !== "note" || item.noteId !== noteId);
+  recentlyClosedFiles.unshift({ type: "note", noteId, name, index: tabIndex });
+  if (recentlyClosedFiles.length > 10) {
+    recentlyClosedFiles = recentlyClosedFiles.slice(0, 10);
+  }
+
+  updateReopenClosedTabButtonState();
+}
+
 function updateReopenClosedTabButtonState() {
   const reopenBtn = document.querySelector('[data-action="reopenClosedTab"]');
   reopenBtn?.classList.toggle("disabled", recentlyClosedFiles.length === 0);
@@ -3782,13 +4058,21 @@ function updateReopenClosedTabButtonState() {
 
 function syncRecentlyClosedFilesState() {
   const openPaths = new Set(tabData.map((tab) => tab.path).filter(Boolean));
+  const openNoteIds = new Set(tabData.filter((tab) => tab.isNote).map((tab) => tab.noteId).filter(Boolean));
   const seenPaths = new Set();
   const seenTrashIds = new Set();
+  const seenNoteIds = new Set();
 
   recentlyClosedFiles = recentlyClosedFiles.filter((item) => {
     if (item?.type === "trash") {
       if (!item.trashId || seenTrashIds.has(item.trashId)) return false;
       seenTrashIds.add(item.trashId);
+      return true;
+    }
+
+    if (item?.type === "note") {
+      if (!item.noteId || openNoteIds.has(item.noteId) || seenNoteIds.has(item.noteId)) return false;
+      seenNoteIds.add(item.noteId);
       return true;
     }
 
@@ -3808,6 +4092,20 @@ async function reopenRecentlyClosedFile() {
   while (recentlyClosedFiles.length > 0) {
     const item = recentlyClosedFiles.shift();
     const { path: filePath, index: originalIndex } = item;
+
+    if (item.type === "note") {
+      const note = await window.electronAPI.readNote(item.noteId);
+      if (!note?.exists) continue;
+
+      const restoreIndex = Math.min(originalIndex, tabData.length);
+      const restoredTab = await createNoteTab(note.content, restoreIndex, note);
+      if (restoredTab) {
+        switchTab(restoredTab);
+        syncRecentlyClosedFilesState();
+        return;
+      }
+      continue;
+    }
 
     if (item.type === "trash") {
       const trash = await window.electronAPI.readAutosaveTrash(item.trashId);
@@ -3866,6 +4164,7 @@ async function reopenRecentlyClosedFile() {
 async function attemptCloseWindow() {
   const hasUnsavedTabs = tabData.some((tab) => !tab.isFileSaved);
   if (!hasUnsavedTabs) {
+    await flushNoteTabs();
     await cleanupSavedTabAutosaves();
     window.electronAPI.closeWindow();
     return;
@@ -3897,6 +4196,15 @@ async function attemptCloseWindow() {
 
     for (const tab of allTabs) {
       switchTab(tab);
+
+      if (tab.isNote) {
+        const noteContent = tab.model?.getValue() ?? tab.content ?? "";
+        if (noteContent.trim()) {
+          await writeNoteTab(tab, noteContent, true);
+        } else {
+          await deleteNoteTabStorage(tab);
+        }
+      }
 
       if (!tab.isFileSaved) {
         let success = false;
@@ -3938,6 +4246,16 @@ async function attemptCloseWindow() {
     // close all tabs
     for (const tab of [...tabData]) {
       clearAutosaveTimer(tab);
+      if (tab.isNote) {
+        const noteContent = tab.model?.getValue() ?? tab.content ?? "";
+        if (noteContent.trim()) {
+          await writeNoteTab(tab, noteContent, true);
+        } else {
+          await deleteNoteTabStorage(tab);
+        }
+        tabs.removeChild(tab.element);
+        continue;
+      }
       if (!tab.isFileSaved) {
         if (tab.path) {
           await window.electronAPI.discardFileAutosaveBackup(tab.path);
@@ -4037,7 +4355,7 @@ function switchTab(data) {
   attachCtrlWheelListener();
 
   currentTab = data;
-  currentFilePath = data.path || data.name;
+  currentFilePath = data.isNote ? `Note: ${data.name}` : data.path || data.name;
   updateDeviceShareButtonState();
 
   // restore selection, scroll position
@@ -4070,6 +4388,49 @@ function switchTab(data) {
   if (data.path && currentWatchedFilePath !== data.path) {
     window.electronAPI.watchFile(data.path);
     currentWatchedFilePath = data.path;
+  }
+
+  refreshFileTabStateOnActivate(data);
+}
+
+async function refreshFileTabStateOnActivate(tab) {
+  if (!tab?.path || tab.isNote || tab._checkingDiskState) return;
+  tab._checkingDiskState = true;
+
+  try {
+    tab._needsDiskRefresh = false;
+    const content = await window.electronAPI.readFile(tab.path);
+    if (tab !== currentTab) return;
+
+    if (content === null || content === undefined) {
+      tab.isWarned = true;
+      tab.element.querySelector(".name")?.classList.add("warn");
+      reloadButton(tab, null, "remove");
+      if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+      return;
+    }
+
+    tab.isWarned = false;
+    tab.element.querySelector(".name")?.classList.remove("warn");
+    if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+
+    if (content === tab._lastExternalContent) {
+      reloadButton(tab, null, "remove");
+      return;
+    }
+
+    if (tab.isFileSaved && normalizeTextForModelComparison(content) === tab.originalContent) {
+      tab._lastExternalContent = content;
+      reloadButton(tab, null, "remove");
+      return;
+    }
+
+    showMessage("file-modified");
+    reloadButton(tab, tab.path, "add");
+  } catch (error) {
+    console.warn("Failed to refresh file tab state:", error);
+  } finally {
+    tab._checkingDiskState = false;
   }
 }
 
@@ -4308,23 +4669,56 @@ async function loadFileByPath(filePath, insertIndex = null) {
 function updateRecentFiles(filePath) {
   if (!filePath) return;
   let recent = JSON.parse(localStorage.getItem("recentFiles") || "[]");
-  recent = recent.filter((p) => p !== filePath); // remove duplication
-  recent.unshift(filePath);
+  recent = recent.filter((item) => {
+    const path = typeof item === "string" ? item : item?.path;
+    return path !== filePath;
+  });
+  recent.unshift({ type: "file", path: filePath, exists: true });
   if (recent.length > 8) recent = recent.slice(0, 8);
   localStorage.setItem("recentFiles", JSON.stringify(recent));
   populateRecentMenu();
 }
 
+async function openNoteById(noteId) {
+  if (!noteId) return;
+  const existingTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
+  if (existingTab) {
+    switchTab(existingTab);
+    return;
+  }
+
+  const note = await window.electronAPI.readNote(noteId);
+  if (!note?.exists) {
+    await populateRecentMenu();
+    return;
+  }
+
+  const restoreIndex = tabData.length;
+  const noteTab = await createNoteTab(note.content, restoreIndex, note);
+  if (noteTab) switchTab(noteTab);
+}
+
 // update open recent menu
 async function populateRecentMenu() {
   let recent = JSON.parse(localStorage.getItem("recentFiles") || "[]");
+  const notes = await window.electronAPI.listNotes();
+  const noteEntries = Array.isArray(notes)
+    ? notes
+        .filter((note) => note?.id && note?.contentBytes > 0)
+        .sort((a, b) => {
+          if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+          const aOrder = Number.isFinite(a.order) ? a.order : Number.MAX_SAFE_INTEGER;
+          const bOrder = Number.isFinite(b.order) ? b.order : Number.MAX_SAFE_INTEGER;
+          return aOrder - bOrder || (a.createdAt || 0) - (b.createdAt || 0);
+        })
+    : [];
 
   // Compatible with old format: if string, convert to { path, exists }
   recent = recent
     .map((item) => {
-      if (typeof item === "string") return { path: item, exists: true };
+      if (typeof item === "string") return { type: "file", path: item, exists: true };
       if (typeof item === "object" && typeof item.path === "string") {
-        return { path: item.path, exists: true };
+        return { type: "file", path: item.path, exists: true };
       }
       return null;
     })
@@ -4370,12 +4764,34 @@ async function populateRecentMenu() {
   recentMenu.innerHTML = "";
 
   // disable button when no recently opened files
-  if (displayEntries.length === 0) {
+  if (noteEntries.length === 0 && displayEntries.length === 0) {
     openRecentBtn.classList.add("disabled");
     recentMenu.style.display = "none";
-    return;
+    return 0;
   }
   openRecentBtn.classList.remove("disabled");
+
+  noteEntries.forEach((note) => {
+    const button = document.createElement("button");
+    const span = document.createElement("span");
+    const title = note.title || "New Note";
+    span.textContent = title;
+
+    button.appendChild(span);
+    button.title = title;
+
+    button.addEventListener("click", async () => {
+      recentMenu.style.display = "none";
+      await openNoteById(note.id);
+    });
+    recentMenu.appendChild(button);
+  });
+
+  if (noteEntries.length > 0 && displayEntries.length > 0) {
+    const hr = document.createElement("div");
+    hr.className = "hr";
+    recentMenu.appendChild(hr);
+  }
 
   displayEntries.forEach(({ path }) => {
     const button = document.createElement("button");
@@ -4410,6 +4826,7 @@ async function populateRecentMenu() {
     populateRecentMenu();
   });
   recentMenu.appendChild(clearButton);
+  return noteEntries.length + displayEntries.length;
 }
 populateRecentMenu();
 
@@ -4419,6 +4836,23 @@ async function saveAsFile() {
   if (!active || !monacoEditor) return;
 
   const content = monacoEditor.getValue();
+  if (active.isNote) {
+    const defaultName = `${getNoteTitleFromContent(content)}.txt`;
+    const { filePath } = await window.electronAPI.showSaveDialog(defaultName);
+    if (!filePath) return false;
+
+    const result = await window.electronAPI.saveToFile(filePath, content);
+    if (result.success) {
+      await writeNoteTab(active, content, true);
+      updateRecentFiles(filePath);
+      showMessage("file-saved");
+      return true;
+    }
+
+    console.error("Failed to save note as file:", result.error);
+    return false;
+  }
+
   const previousDraftId = active.draftId;
   clearAutosaveTimer(active);
   const { filePath } = await window.electronAPI.showSaveDialog(active.name);
@@ -4463,6 +4897,12 @@ async function saveFile() {
   console.log("Saving file path:", active?.path);
   if (!active || !monacoEditor) return false;
 
+  if (active.isNote) {
+    const success = await writeNoteTab(active, monacoEditor.getValue(), true);
+    if (success) showMessage("file-saved");
+    return success;
+  }
+
   // excute saveAsFile when no path
   if (!active.path) {
     return await saveAsFile();
@@ -4505,6 +4945,16 @@ function hasUnsavedChanges(tab, content = null) {
 
 function syncTabSaveState(tab, content = null) {
   if (!tab) return false;
+
+  if (tab.isNote) {
+    const nextContent = content ?? tab?.content ?? tab?.model?.getValue() ?? "";
+    tab.isFileSaved = true;
+    tab.noteDirty = nextContent !== tab.originalContent;
+    updateNoteTabTitle(tab, nextContent);
+    const close = tab.element?.querySelector(".close");
+    if (close) close.classList.remove("show-unsaved");
+    return tab.noteDirty;
+  }
 
   const hasChanges = hasUnsavedChanges(tab, content);
   tab.isFileSaved = !hasChanges;
@@ -4588,6 +5038,12 @@ document.addEventListener("contextmenu", async (e) => {
     if (item?.type === "trash") {
       const trash = await window.electronAPI.readAutosaveTrash(item.trashId);
       if (trash?.exists) validItems.push(item);
+      continue;
+    }
+
+    if (item?.type === "note") {
+      const exists = await window.electronAPI.noteExists(item.noteId);
+      if (exists) validItems.push(item);
       continue;
     }
 
@@ -5003,8 +5459,14 @@ window.addEventListener("keydown", async (e) => {
     }
   }
 
+  // Ctrl + Alt + S
+  if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === "KeyS") {
+    e.preventDefault();
+    await saveAsNote();
+    return;
+  }
   // Ctrl + S (+ Shift)
-  if ((e.ctrlKey || e.metaKey) && e.code === "KeyS") {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === "KeyS") {
     e.preventDefault();
     if (e.shiftKey) {
       saveAsFile();
@@ -5021,8 +5483,14 @@ window.addEventListener("keydown", async (e) => {
     e.preventDefault();
     settingsMenu.style.display = "block";
   }
+  // Ctrl + Alt + T
+  if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === "KeyT") {
+    if (externalCancelDragging) externalCancelDragging();
+    e.preventDefault();
+    await createNewNote();
+  }
   // Ctrl + Shift + T
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyT") {
+  else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyT") {
     if (externalCancelDragging) externalCancelDragging();
     e.preventDefault();
     await reopenRecentlyClosedFile();
