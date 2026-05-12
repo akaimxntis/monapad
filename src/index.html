@@ -88,6 +88,7 @@
         --window-top-safe-area: 1px; /* to prevent windows 11 border from overlapping the content, set to 0px if not needed */
         --toolbar-height: 35px;
         --status-bar-height: 25px;
+        --notes-panel-width: 260px;
 
         /* You can specify one or more fonts to be used in the editor in order of priority */
         /* If this field is not empty, the font setting in the app will be ignored */
@@ -261,7 +262,8 @@
       #recent-menu button,
       #theme-menu button,
       #custom-context-menu button,
-      #tab-context-menu button {
+      #tab-context-menu button,
+      #note-context-menu button {
         width: 100%;
         height: 28px;
         font-size: 14px;
@@ -284,14 +286,19 @@
         display: flex;
         position: fixed;
         top: 0;
+        left: 0;
+        right: 0;
         align-items: center;
         background: var(--color1);
-        width: 100%;
         height: calc(var(--toolbar-height) + var(--window-top-safe-area));
         padding-top: var(--window-top-safe-area);
         box-sizing: border-box;
         overflow: visible;
         -webkit-app-region: drag;
+        transition: left 180ms ease;
+      }
+      body.notes-panel-open #toolbar {
+        left: calc(var(--notes-panel-width) - 41px);
       }
       #menu-button {
         -webkit-app-region: no-drag;
@@ -324,6 +331,7 @@
       }
       #menu-button svg {
         overflow: visible;
+        transition: opacity 120ms ease;
       }
       #menu-button:hover {
         background: var(--color1);
@@ -362,7 +370,8 @@
       #recent-menu .hr,
       #custom-context-menu .hr,
       #tab-context-menu .hr,
-      #theme-menu .hr {
+      #theme-menu .hr,
+      #note-context-menu .hr {
         height: 1px;
         background: var(--color3);
         margin: 5px 10px;
@@ -371,6 +380,7 @@
       #menu,
       #custom-context-menu,
       #tab-context-menu,
+      #note-context-menu,
       #theme-menu,
       #recent-menu,
       #file-saved,
@@ -505,11 +515,27 @@
       #tabs-container {
         height: 100%;
         display: flex;
+        position: relative;
         max-width: calc(100vw - 230px);
         flex-shrink: 1;
         flex-grow: 0;
         align-items: center;
         overflow: visible;
+        transition: max-width 180ms ease;
+      }
+      body.notes-panel-open #tabs-container:has(.tab)::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        bottom: -1px;
+        width: 21px;
+        height: 1px;
+        background: var(--color3);
+        pointer-events: none;
+        z-index: 0;
+      }
+      body.notes-panel-open #tabs-container {
+        max-width: calc(100vw - 230px - var(--notes-panel-width) + 41px);
       }
       #tabs {
         position: relative;
@@ -828,6 +854,7 @@
         resize: none;
         margin-top: calc(var(--toolbar-height) + var(--window-top-safe-area));
         border-top: 1px solid var(--color3);
+        transition: margin-left 180ms ease;
       }
       #status-bar {
         height: var(--status-bar-height);
@@ -1210,7 +1237,8 @@
         word-break: break-word;
       }
       #custom-context-menu.menu,
-      #tab-context-menu.menu {
+      #tab-context-menu.menu,
+      #note-context-menu.menu {
         overflow-y: auto;
         max-height: calc(100vh - 12.5px - 35px);
         position: absolute;
@@ -1224,7 +1252,8 @@
         user-select: none;
       }
       #custom-context-menu button,
-      #tab-context-menu button {
+      #tab-context-menu button,
+      #note-context-menu button {
         position: relative;
         background: none;
         color: var(--editorText);
@@ -1235,8 +1264,12 @@
         display: flex;
       }
       #custom-context-menu button:hover,
-      #tab-context-menu button:hover {
+      #tab-context-menu button:hover,
+      #note-context-menu button:hover {
         background: var(--color3);
+      }
+      #note-context-menu button[data-action="delete"] {
+        color: var(--warn);
       }
       #custom-context-menu button .label {
         display: inline-block;
@@ -1274,6 +1307,202 @@
         border-left: 1px solid var(--color3);
         overflow-anchor: none;
         scroll-behavior: auto !important;
+      }
+      #notes-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 9995;
+        -webkit-app-region: no-drag;
+        width: var(--notes-panel-width);
+        height: calc(100vh - var(--status-bar-height));
+        background: var(--color2);
+        border-right: 1px solid var(--color3);
+        box-sizing: border-box;
+        transform: translateX(calc(-1 * var(--notes-panel-width)));
+        transition: transform 180ms ease;
+        user-select: none;
+        overflow: hidden;
+        overflow-anchor: none;
+        scroll-behavior: auto !important;
+        padding-top: calc(var(--window-top-safe-area) + var(--toolbar-height));
+      }
+      body.notes-panel-open #notes-panel {
+        transform: translateX(0);
+        overflow-y: auto;
+      }
+      body.notes-panel-open:not(.status-bar-visible) #notes-panel {
+        height: 100vh;
+      }
+      #notes-panel-close {
+        position: absolute;
+        top: var(--window-top-safe-area);
+        right: 5px;
+        width: 26px;
+        height: 26px;
+        margin-top: 5px;
+        padding: 0;
+        border: none;
+        border-radius: 5px;
+        background: none;
+        color: var(--editorText);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 120ms ease;
+        transition-delay: 0ms;
+        -webkit-app-region: no-drag;
+        z-index: 1;
+      }
+      body.notes-panel-open #notes-panel-close {
+        opacity: 1;
+        pointer-events: auto;
+        transition-delay: 80ms, 0ms;
+      }
+      #notes-panel-close:hover {
+        background: var(--color3);
+      }
+      #notes-panel-tools {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 0 6px 0 10px;
+        margin: 5px 0 10px 0;
+        height: 35px;
+        box-sizing: border-box;
+      }
+      #notes-search {
+        flex: 1;
+        min-width: 0;
+        height: 26px;
+        box-sizing: border-box;
+        background: var(--color1);
+        color: var(--editorText);
+        border: 1px solid var(--color3);
+        padding: 0 8px;
+        font: inherit;
+        font-size: 13px;
+        user-select: text;
+      }
+      #notes-search::placeholder {
+        color: var(--grayOut);
+      }
+      #notes-add {
+        display: flex;
+        flex-shrink: 0;
+        background: none;
+        color: var(--editorText);
+        border: none;
+        cursor: pointer;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 5px;
+      }
+      #notes-add:hover {
+        background: var(--color3);
+      }
+      #notes-list {
+        padding: 0 0 115px 0;
+      }
+      .note-list-item {
+        position: relative;
+        display: flex;
+        align-items: center;
+        width: 100%;
+        height: 28px;
+        line-height: 28px;
+        padding: 0 20px;
+        box-sizing: border-box;
+        color: var(--editorText);
+        cursor: default;
+        user-select: none;
+      }
+      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item:hover,
+      .note-list-item.dragging,
+      .note-list-item.pinned {
+        padding: 0 8px 0 20px;
+      }
+      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item:hover,
+      .note-list-item.dragging,
+      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.pinned:hover {
+        background: var(--color3);
+      }
+      .note-list-title {
+        font-size: 14px;
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        -webkit-mask-image: linear-gradient(to right, black 82%, transparent 100%);
+        mask-image: linear-gradient(to right, black 82%, transparent 100%);
+      }
+      .note-pin-button {
+        flex: 0 0 24px;
+        width: 24px;
+        height: 24px;
+        padding: 0;
+        border: none;
+        border-radius: 5px;
+        background: none;
+        color: var(--editorText);
+        display: none;
+        align-items: center;
+        justify-content: center;
+      }
+      #notes-list:not(:has(.note-list-item.dragging)) .note-pin-button {
+        cursor: pointer;
+      }
+      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item:hover .note-pin-button,
+      .note-list-item.dragging .note-pin-button,
+      .note-list-item.pinned .note-pin-button {
+        display: flex;
+      }
+      .note-pin-button svg {
+        width: 18px;
+        height: 18px;
+        transition: fill 120ms ease;
+        fill: color-mix(in srgb, var(--editorText) 0%, transparent);
+      }
+      .note-list-item.pinned .note-pin-button svg {
+        fill: var(--editorText);
+      }
+      #notes-list:not(:has(.note-list-item.dragging)) .note-pin-button:hover svg,
+      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.pinned .note-pin-button:hover svg {
+        fill: color-mix(in srgb, var(--editorText) 50%, transparent);
+      }
+      .note-pin-button svg path {
+        stroke: var(--editorText);
+      }
+      #notes-panel-menu-button {
+        position: absolute;
+        top: var(--window-top-safe-area);
+        left: 0;
+        width: 40px;
+        height: var(--toolbar-height);
+        padding: 0;
+        border: none;
+        background: var(--color2);
+        color: var(--editorText);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        -webkit-app-region: no-drag;
+      }
+      #notes-panel-menu-button svg {
+        overflow: visible;
+      }
+      #notes-panel-menu-button svg line {
+        stroke: var(--grayOut) !important;
+        stroke-width: 2px;
+      }
+      #notes-panel-menu-button:hover svg line {
+        stroke: var(--highlight) !important;
       }
       #settings-menu h1 {
         display: flex;
@@ -1577,6 +1806,10 @@
             <polyline fill="none" stroke="#fff" stroke-miterlimit="10" points=".35 9.42 4.94 4.83 .35 .36" />
           </svg>
         </button>
+        <button id="toggleNotesPanelBtn">
+          <span class="label">Notes</span>
+          <span class="shortcut">Ctrl + B</span>
+        </button>
         <button id="settingsBtn">
           <span class="label">Settings</span>
           <span class="shortcut">Ctrl + ,</span>
@@ -1628,6 +1861,96 @@
             />
           </svg>
         </button>
+      </div>
+
+      <!-- notes panel -->
+      <aside id="notes-panel" class="scrollable" aria-hidden="true">
+        <button id="notes-panel-menu-button" aria-label="Menu">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15.16 7.2" width="16" height="8">
+            <line
+              x1="0.64"
+              y1="0.5"
+              x2="14.66"
+              y2="0.5"
+              stroke="#fff"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              fill="none"
+            />
+            <line
+              x1="0.5"
+              y1="6.7"
+              x2="7.65"
+              y2="6.7"
+              stroke="#fff"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              fill="none"
+            />
+          </svg>
+        </button>
+        <button id="notes-panel-close" aria-label="Close Notes">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8.74 8.74" width="10" height="10">
+            <line
+              x1="8.24"
+              y1=".5"
+              x2=".5"
+              y2="8.24"
+              fill="none"
+              stroke="#fff"
+              stroke-linecap="round"
+              stroke-miterlimit="10"
+            />
+            <line
+              x1="8.24"
+              y1="8.24"
+              x2=".5"
+              y2=".5"
+              fill="none"
+              stroke="#fff"
+              stroke-linecap="round"
+              stroke-miterlimit="10"
+            />
+          </svg>
+        </button>
+        <div id="notes-panel-tools">
+          <input id="notes-search" type="text" placeholder="Search" spellcheck="false" />
+          <button id="notes-add" aria-label="New Note">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10.23 10.23" width="13" height="13">
+              <line
+                x1="5.12"
+                y1=".5"
+                x2="5.12"
+                y2="9.73"
+                fill="none"
+                stroke="#fff"
+                stroke-linecap="round"
+                stroke-miterlimit="10"
+              />
+              <line
+                x1=".5"
+                y1="5.12"
+                x2="9.73"
+                y2="5.12"
+                fill="none"
+                stroke="#fff"
+                stroke-linecap="round"
+                stroke-miterlimit="10"
+              />
+            </svg>
+          </button>
+        </div>
+        <div id="notes-list"></div>
+      </aside>
+
+      <!-- note context menu -->
+      <div id="note-context-menu" class="menu scrollable">
+        <button data-action="copyText">Copy Text</button>
+        <button data-action="duplicate">Duplicate</button>
+        <button data-action="convertToUntitled">Convert to Untitled</button>
+        <button data-action="convertToFile">Convert to File</button>
+        <div class="hr"></div>
+        <button data-action="delete">Delete</button>
       </div>
 
       <!-- editor -->

@@ -25,7 +25,14 @@ const newTabBtn = document.getElementById("newTabBtn");
 const newNoteBtn = document.getElementById("newNoteBtn");
 const saveAsNoteBtn = document.getElementById("saveAsNoteBtn");
 const settingsButton = document.getElementById("settingsBtn");
+const toggleNotesPanelBtn = document.getElementById("toggleNotesPanelBtn");
 const settingsMenu = document.getElementById("settings-menu");
+const notesPanel = document.getElementById("notes-panel");
+const notesPanelClose = document.getElementById("notes-panel-close");
+const notesPanelMenuButton = document.getElementById("notes-panel-menu-button");
+const notesAddButton = document.getElementById("notes-add");
+const notesList = document.getElementById("notes-list");
+const noteContextMenu = document.getElementById("note-context-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
 const tabContextMenu = document.getElementById("tab-context-menu");
 const excludedIds = ["changeTheme", "openRecent"]; // buttons that dont close menu on click
@@ -166,6 +173,9 @@ let dragCounter = 0;
 
 // store right clicked tab
 let rightClickedTab = null;
+let rightClickedNoteId = null;
+let notesIndexCache = [];
+const NOTE_PIN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/></svg>`;
 
 // watch only active tab, remove old watcher when tab switched (switchTab)
 let currentWatchedFilePath = null;
@@ -341,6 +351,7 @@ function updateMenuLabels() {
   // document.getElementById("print-button").textContent = i18next.t("menu.print");
   document.querySelector("#changeTheme .btn-text").textContent = i18next.t("menu.theme");
   document.querySelector("#settingsBtn .label").textContent = i18next.t("menu.settings");
+  document.querySelector("#toggleNotesPanelBtn .label").textContent = i18next.t("menu.notes");
   document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
   document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
   document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
@@ -518,31 +529,61 @@ function getAllCSSVars(prefix = "--", fromLast = true) {
 }
 
 const MONAPAD_CODE_BLOCK_LANGUAGE_RULES = [
-  [/^\s*```\s*(javascript|js|jsx)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "javascript" }],
-  [/^\s*```\s*(typescript|ts|tsx)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "typescript" }],
+  [
+    /^\s*```\s*(javascript|js|jsx)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "javascript" },
+  ],
+  [
+    /^\s*```\s*(typescript|ts|tsx)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "typescript" },
+  ],
   [/^\s*```\s*(html)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "html" }],
   [/^\s*```\s*(css)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "css" }],
   [/^\s*```\s*(scss|sass)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "scss" }],
   [/^\s*```\s*(less)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "less" }],
-  [/^\s*```\s*(json|jsonc)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "json" }],
-  [/^\s*```\s*(markdown|md)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "markdown" }],
+  [
+    /^\s*```\s*(json|jsonc)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "json" },
+  ],
+  [
+    /^\s*```\s*(markdown|md)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "markdown" },
+  ],
   [/^\s*```\s*(xml|svg)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "xml" }],
   [/^\s*```\s*(yaml|yml)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "yaml" }],
-  [/^\s*```\s*(python|py)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "python" }],
-  [/^\s*```\s*(shell|sh|bash|zsh)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "shell" }],
-  [/^\s*```\s*(powershell|ps1)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "powershell" }],
+  [
+    /^\s*```\s*(python|py)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "python" },
+  ],
+  [
+    /^\s*```\s*(shell|sh|bash|zsh)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "shell" },
+  ],
+  [
+    /^\s*```\s*(powershell|ps1)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "powershell" },
+  ],
   [/^\s*```\s*(bat|cmd)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "bat" }],
   [/^\s*```\s*(sql)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "sql" }],
   [/^\s*```\s*(c)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "cpp" }],
   [/^\s*```\s*(cpp|c\+\+)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "cpp" }],
-  [/^\s*```\s*(csharp|cs|c#)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "csharp" }],
+  [
+    /^\s*```\s*(csharp|cs|c#)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "csharp" },
+  ],
   [/^\s*```\s*(java)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "java" }],
   [/^\s*```\s*(php)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "php" }],
   [/^\s*```\s*(ruby|rb)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "ruby" }],
   [/^\s*```\s*(go|golang)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "go" }],
   [/^\s*```\s*(rust|rs)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "rust" }],
-  [/^\s*```\s*(dockerfile|docker)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "dockerfile" }],
-  [/^\s*```\s*(ini|properties)(?=\s|$).*$/, { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "ini" }],
+  [
+    /^\s*```\s*(dockerfile|docker)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "dockerfile" },
+  ],
+  [
+    /^\s*```\s*(ini|properties)(?=\s|$).*$/,
+    { token: "code-block-fence", next: "@codeblockEmbedded", nextEmbedded: "ini" },
+  ],
 ];
 
 // define monapad language
@@ -1403,7 +1444,9 @@ function normalizeTextForModelComparison(text) {
 }
 
 function createAutosaveId() {
-  const id = window.crypto?.randomUUID ? window.crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const id = window.crypto?.randomUUID
+    ? window.crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return `w${myWindowId || "pending"}_${id}`;
 }
 
@@ -1467,6 +1510,7 @@ async function writeNoteTab(tab, content = null, force = false) {
     const close = tab.element?.querySelector(".close");
     if (close) close.classList.remove("show-unsaved");
     if (tab === currentTab) updateStatusBar();
+    renderNotesList();
     return true;
   } catch (error) {
     console.warn("Failed to write note:", error);
@@ -1479,9 +1523,54 @@ async function deleteNoteTabStorage(tab) {
   clearAutosaveTimer(tab);
   try {
     await window.electronAPI.deleteNote(tab.noteId);
+    renderNotesList();
   } catch (error) {
     console.warn("Failed to delete empty note:", error);
   }
+}
+
+function sortNotesForPanel(notes = []) {
+  return [...notes].sort((a, b) => {
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    const aOrder = Number.isFinite(a.order) ? a.order : Number.MAX_SAFE_INTEGER;
+    const bOrder = Number.isFinite(b.order) ? b.order : Number.MAX_SAFE_INTEGER;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return (a.createdAt || 0) - (b.createdAt || 0);
+  });
+}
+
+function getReusableEmptyUntitledTab() {
+  if (tabData.length !== 1) return null;
+  const tab = tabData[0];
+  if (tab.path || tab.isNote || tab.isWarned) return null;
+  const content =
+    monacoEditor && tab === currentTab ? monacoEditor.getValue() : (tab.model?.getValue() ?? tab.content ?? "");
+  return content.trim() ? null : tab;
+}
+
+function applyNoteDataToTab(tab, note, content) {
+  const title = note?.meta?.title || getNoteTitleFromContent(content);
+  tab.isNote = true;
+  tab.noteId = note.id;
+  tab.notePath = note.path;
+  tab.noteTitle = title;
+  tab.noteCreatedAt = note.meta?.createdAt || Date.now();
+  tab.noteUpdatedAt = note.meta?.updatedAt || Date.now();
+  tab.noteDirty = false;
+  tab.draftId = null;
+  tab.path = null;
+  tab.name = title;
+  tab.content = content;
+  tab.originalContent = content;
+  tab.isFileSaved = true;
+  tab.isWarned = false;
+  tab.isMarkdown = false;
+  tab._lastExternalContent = null;
+  tab.element.classList.add("note");
+  tab.element.querySelector(".name")?.classList.remove("warn");
+  tab.element.querySelector(".close")?.classList.remove("show-unsaved");
+  reloadButton(tab, null, "remove");
+  updateNoteTabTitle(tab, content);
 }
 
 function clearAutosaveTimer(tab) {
@@ -2154,7 +2243,7 @@ function applySettings() {
     },
     folding: settings.folding,
   });
-  editor.style.marginLeft = settings.lineNumbers ? "20px" : "0px";
+  updateEditorLeftMargin();
 
   document.querySelector("#line-highlight .checkmark").style.display = settings.lineHighlight ? "inline-block" : "none";
   document.querySelector("#line-num .checkmark").style.display = settings.lineNumbers ? "inline-block" : "none";
@@ -2173,11 +2262,13 @@ function applySettings() {
   const statusBar = document.getElementById("status-bar");
   const checkmark = document.querySelector("#toggleStatusBar .checkmark");
   if (settings.statusBarVisible) {
+    document.body.classList.add("status-bar-visible");
     statusBar.style.display = "flex";
     checkmark.style.display = "inline-block";
     editor.style.height = "calc(100vh - 35px - 25px - var(--window-top-safe-area))";
     settingsMenu.style.height = "calc(100vh - 35px - 25px - var(--window-top-safe-area))";
   } else {
+    document.body.classList.remove("status-bar-visible");
     statusBar.style.display = "none";
     checkmark.style.display = "none";
     editor.style.height = "calc(100vh - 35px - var(--window-top-safe-area))";
@@ -2306,22 +2397,114 @@ createTab();
 switchTab(tabData[0]);
 setTimeout(() => monacoEditor?.focus(), 0);
 
-// menu button
-menuButton.onclick = (e) => {
+function setNotesPanelOpen(open) {
+  if (document.body.classList.contains("notes-panel-open") === open) return;
+  document.body.classList.toggle("notes-panel-open", open);
+  notesPanel?.setAttribute("aria-hidden", open ? "false" : "true");
+  updateEditorLeftMargin();
+  if (open) {
+    renderNotesList();
+    menu.style.display = "none";
+    themeMenu.style.display = "none";
+    recentMenu.style.display = "none";
+    settingsMenu.style.display = "none";
+    setMenuButtonsPointerEvents("auto");
+  }
+  setTimeout(() => monacoEditor?.layout(), 190);
+}
+
+function getNotesPanelWidth() {
+  const value = getComputedStyle(document.documentElement).getPropertyValue("--notes-panel-width");
+  const width = parseFloat(value);
+  return Number.isFinite(width) ? width : 300;
+}
+
+function updateEditorLeftMargin() {
+  const lineNumberOffset = settings.lineNumbers ? 20 : 0;
+  const panelOffset = document.body.classList.contains("notes-panel-open") ? getNotesPanelWidth() : 0;
+  editor.style.marginLeft = `${lineNumberOffset + panelOffset}px`;
+}
+
+function toggleNotesPanel() {
+  setNotesPanelOpen(!document.body.classList.contains("notes-panel-open"));
+}
+
+function toggleMainMenuFromButton(e) {
   e.stopPropagation();
+  if (menuButtonDragOpenedPanel) {
+    menuButtonDragOpenedPanel = false;
+    return;
+  }
   customContextMenu.style.display = "none";
   tabContextMenu.style.display = "none";
   rightClickedTab = null;
   const isOpen = menu.style.display === "block";
   menu.style.display = isOpen ? "none" : "block";
-  menuButton.style.pointerEvents = isOpen ? "auto" : "none";
-};
+  setMenuButtonsPointerEvents(isOpen ? "auto" : "none");
+}
+
+function setMenuButtonsPointerEvents(value) {
+  menuButton.style.pointerEvents = value;
+  notesPanelMenuButton.style.pointerEvents = value;
+}
+
+toggleNotesPanelBtn.addEventListener("click", (e) => {
+  e.preventDefault();
+  setNotesPanelOpen(true);
+});
+
+notesPanelClose.addEventListener("click", () => {
+  setNotesPanelOpen(false);
+  monacoEditor?.focus();
+});
+
+notesAddButton?.addEventListener("click", async () => {
+  await createNewNote();
+});
+
+// menu button
+menuButton.onclick = toggleMainMenuFromButton;
+notesPanelMenuButton.onclick = toggleMainMenuFromButton;
+
+const NOTES_PANEL_DRAG_THRESHOLD = 42;
+let menuButtonDragStart = null;
+let menuButtonDragOpenedPanel = false;
+
+menuButton.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  menuButtonDragStart = { x: e.clientX, y: e.clientY };
+  menuButtonDragOpenedPanel = false;
+});
+
+window.addEventListener("mousemove", (e) => {
+  if (!menuButtonDragStart || menuButtonDragOpenedPanel) return;
+  const dx = e.clientX - menuButtonDragStart.x;
+  const dy = Math.abs(e.clientY - menuButtonDragStart.y);
+  if (dx >= NOTES_PANEL_DRAG_THRESHOLD && dy < 40) {
+    menuButtonDragOpenedPanel = true;
+    setNotesPanelOpen(true);
+  }
+});
+
+window.addEventListener("mouseup", () => {
+  menuButtonDragStart = null;
+  if (menuButtonDragOpenedPanel) {
+    setTimeout(() => {
+      menuButtonDragOpenedPanel = false;
+    }, 0);
+  }
+});
 
 // close menu & context menu on outside click
 document.addEventListener("mousedown", (e) => {
   if (e.target.closest(".choices")) return;
+  if (e.target.closest("#menu-button, #notes-panel-menu-button")) return;
   if (!customContextMenu.contains(e.target)) {
     customContextMenu.style.display = "none";
+  }
+  if (noteContextMenu && !noteContextMenu.contains(e.target)) {
+    noteContextMenu.style.display = "none";
+    rightClickedNoteId = null;
   }
   if (!tabContextMenu.contains(e.target)) {
     tabContextMenu.style.display = "none";
@@ -2331,7 +2514,7 @@ document.addEventListener("mousedown", (e) => {
     menu.style.display = "none";
     themeMenu.style.display = "none";
     recentMenu.style.display = "none";
-    menuButton.style.pointerEvents = "auto";
+    setMenuButtonsPointerEvents("auto");
   }
 });
 
@@ -2347,18 +2530,22 @@ document.addEventListener("click", (e) => {
     tabContextMenu.style.display = "none";
     rightClickedTab = null;
   }
+  if (noteContextMenu?.contains(e.target) && button) {
+    noteContextMenu.style.display = "none";
+    rightClickedNoteId = null;
+  }
 
   // themeMenu & menu (except for cetain buttons)
   if (menu.contains(e.target) && button && !excludedIds.includes(button.id)) {
     menu.style.display = "none";
-    menuButton.style.pointerEvents = "auto";
+    setMenuButtonsPointerEvents("auto");
   }
 
   // recentMenu menu
   if (recentMenu.contains(e.target) && button) {
     recentMenu.style.display = "none";
     menu.style.display = "none";
-    menuButton.style.pointerEvents = "auto";
+    setMenuButtonsPointerEvents("auto");
   }
 });
 
@@ -2372,7 +2559,7 @@ document.addEventListener("contextmenu", (e) => {
     menu.style.display = "none";
     themeMenu.style.display = "none";
     recentMenu.style.display = "none";
-    menuButton.style.pointerEvents = "auto";
+    setMenuButtonsPointerEvents("auto");
   }
 });
 
@@ -3697,20 +3884,25 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
   }
 
   const noteContent = typeof note.content === "string" ? note.content : content;
+  const reusableTab = getReusableEmptyUntitledTab();
+  if (reusableTab) {
+    const previousDraftId = reusableTab.draftId;
+    clearAutosaveTimer(reusableTab);
+    if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
+    reusableTab._ignoreUnsavedCheck = true;
+    reusableTab.model.setValue(noteContent);
+    applyNoteDataToTab(reusableTab, note, noteContent);
+    if (reusableTab === currentTab) {
+      currentFilePath = `Note: ${reusableTab.name}`;
+      updateStatusBar();
+    }
+    renderNotesList();
+    return reusableTab;
+  }
+
   const data = createTab(title, noteContent, null, insertIndex);
-  data.isNote = true;
-  data.noteId = note.id;
-  data.notePath = note.path;
-  data.noteTitle = title;
-  data.noteCreatedAt = note.meta?.createdAt || Date.now();
-  data.noteUpdatedAt = note.meta?.updatedAt || Date.now();
-  data.noteDirty = false;
-  data.draftId = null;
-  data.originalContent = noteContent;
-  data.isFileSaved = true;
-  data.element.classList.add("note");
-  data.element.querySelector(".close")?.classList.remove("show-unsaved");
-  updateNoteTabTitle(data, noteContent);
+  applyNoteDataToTab(data, note, noteContent);
+  renderNotesList();
   return data;
 }
 
@@ -3749,6 +3941,8 @@ async function saveAsNote() {
     updateNoteTabTitle(active, content);
     if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
     updateStatusBar();
+    await renderNotesList();
+    await populateRecentMenu();
     showMessage("file-saved");
     return true;
   }
@@ -4058,7 +4252,12 @@ function updateReopenClosedTabButtonState() {
 
 function syncRecentlyClosedFilesState() {
   const openPaths = new Set(tabData.map((tab) => tab.path).filter(Boolean));
-  const openNoteIds = new Set(tabData.filter((tab) => tab.isNote).map((tab) => tab.noteId).filter(Boolean));
+  const openNoteIds = new Set(
+    tabData
+      .filter((tab) => tab.isNote)
+      .map((tab) => tab.noteId)
+      .filter(Boolean),
+  );
   const seenPaths = new Set();
   const seenTrashIds = new Set();
   const seenNoteIds = new Set();
@@ -4698,6 +4897,236 @@ async function openNoteById(noteId) {
   if (noteTab) switchTab(noteTab);
 }
 
+async function renderNotesList() {
+  if (!notesList) return;
+  const notes = await window.electronAPI.listNotes();
+  notesIndexCache = sortNotesForPanel(Array.isArray(notes) ? notes : []);
+  notesList.innerHTML = "";
+
+  for (const note of notesIndexCache) {
+    if (!note?.id) continue;
+    const item = document.createElement("div");
+    item.className = `note-list-item${note.pinned ? " pinned" : ""}`;
+    item.dataset.noteId = note.id;
+
+    const title = document.createElement("span");
+    title.className = "note-list-title";
+    title.textContent = note.title || getNoteTitleFromContent("");
+    title.title = title.textContent;
+
+    const pinButton = document.createElement("button");
+    pinButton.className = "note-pin-button";
+    pinButton.type = "button";
+    pinButton.innerHTML = NOTE_PIN_ICON_SVG;
+    pinButton.setAttribute("aria-label", note.pinned ? "Unpin Note" : "Pin Note");
+    pinButton.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await window.electronAPI.updateNoteMeta({ noteId: note.id, pinned: !note.pinned });
+      await renderNotesList();
+      await populateRecentMenu();
+    });
+
+    item.append(title, pinButton);
+    item.addEventListener("click", async () => {
+      if (suppressNoteClick) return;
+      await openNoteById(note.id);
+    });
+    item.addEventListener("contextmenu", (e) => showNoteContextMenu(e, note.id));
+    item.addEventListener("mousedown", (e) => beginNoteListDrag(e, item));
+    notesList.appendChild(item);
+  }
+}
+
+function showNoteContextMenu(e, noteId) {
+  e.preventDefault();
+  e.stopPropagation();
+  rightClickedNoteId = noteId;
+  customContextMenu.style.display = "none";
+  tabContextMenu.style.display = "none";
+  rightClickedTab = null;
+
+  noteContextMenu.style.display = "block";
+  noteContextMenu.style.visibility = "hidden";
+  const menuWidth = noteContextMenu.offsetWidth;
+  const menuHeight = noteContextMenu.offsetHeight;
+  let left = e.pageX;
+  let top = e.pageY;
+  if (left + menuWidth > window.innerWidth) left = Math.max(0, window.innerWidth - menuWidth);
+  if (top + menuHeight > window.innerHeight) top = Math.max(0, window.innerHeight - menuHeight);
+  noteContextMenu.style.left = `${left}px`;
+  noteContextMenu.style.top = `${top}px`;
+  noteContextMenu.style.visibility = "visible";
+  noteContextMenu.style.display = "block";
+}
+
+async function getLiveNoteContent(noteId) {
+  const openTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
+  if (openTab) return openTab.model?.getValue() ?? openTab.content ?? "";
+  const note = await window.electronAPI.readNote(noteId);
+  return note?.exists ? note.content || "" : null;
+}
+
+async function deleteNoteEverywhere(noteId, { trash = false } = {}) {
+  const result = trash ? await window.electronAPI.trashNote(noteId) : await window.electronAPI.deleteNote(noteId);
+  if (!result?.success) return false;
+
+  for (const tab of [...tabData].filter((item) => item.isNote && item.noteId === noteId)) {
+    removeTabAndAdjustUI(tab);
+  }
+  await renderNotesList();
+  await populateRecentMenu();
+  return true;
+}
+
+async function convertNoteToUntitled(noteId) {
+  const content = await getLiveNoteContent(noteId);
+  if (content === null) return false;
+
+  const openTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
+  await window.electronAPI.deleteNote(noteId);
+
+  const targetTab = openTab || createTab(null, content);
+  if (openTab) {
+    clearAutosaveTimer(openTab);
+    openTab.isNote = false;
+    openTab.noteId = null;
+    openTab.notePath = null;
+    openTab.noteTitle = null;
+    openTab.noteDirty = false;
+    openTab.path = null;
+    openTab.draftId = createAutosaveId();
+    openTab.name = `${i18next.t("file.untitled")}.txt`;
+    openTab.element.classList.remove("note");
+    const nameSpan = openTab.element.querySelector(".name");
+    if (nameSpan) {
+      nameSpan.textContent = openTab.name;
+      nameSpan.title = openTab.name;
+    }
+    openTab.model.setValue(content);
+  }
+
+  targetTab.content = content;
+  targetTab.originalContent = "";
+  targetTab.isFileSaved = false;
+  targetTab.element.querySelector(".close")?.classList.add("show-unsaved");
+  scheduleTabAutosave(targetTab, content);
+  switchTab(targetTab);
+  await renderNotesList();
+  await populateRecentMenu();
+  return true;
+}
+
+async function convertNoteToFile(noteId) {
+  const content = await getLiveNoteContent(noteId);
+  if (content === null) return false;
+  const defaultName = `${getNoteTitleFromContent(content)}.txt`;
+  const { filePath } = await window.electronAPI.showSaveDialog(defaultName);
+  if (!filePath) return false;
+
+  const result = await window.electronAPI.saveToFile(filePath, content);
+  if (!result?.success) {
+    console.error("Failed to convert note to file:", result?.error);
+    return false;
+  }
+
+  const openTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
+  await window.electronAPI.deleteNote(noteId);
+  if (openTab) removeTabAndAdjustUI(openTab);
+  await loadFileByPath(filePath);
+  updateRecentFiles(filePath);
+  await renderNotesList();
+  await populateRecentMenu();
+  showMessage("file-saved");
+  return true;
+}
+
+let noteDragState = null;
+let suppressNoteClick = false;
+
+function beginNoteListDrag(e, item) {
+  if (e.button !== 0 || e.target.closest(".note-pin-button")) return;
+  noteDragState = {
+    item,
+    startY: e.clientY,
+    currentY: 0,
+    dragIndex: [...notesList.querySelectorAll(".note-list-item")].indexOf(item),
+    dragging: false,
+  };
+}
+
+window.addEventListener("mousemove", (e) => {
+  if (!noteDragState) return;
+  const { item, startY } = noteDragState;
+  if (!noteDragState.dragging) {
+    if (Math.abs(e.clientY - startY) < 5) return;
+    noteDragState.dragging = true;
+    noteDragState.currentY = 0;
+    item.classList.add("dragging");
+    item.style.transition = "none";
+    item.style.position = "relative";
+    item.style.zIndex = "2";
+    item.style.pointerEvents = "none";
+  }
+
+  noteDragState.currentY = e.clientY - noteDragState.startY;
+  item.style.transform = `translateY(${noteDragState.currentY}px)`;
+
+  const items = [...notesList.querySelectorAll(".note-list-item")];
+  const currentRect = item.getBoundingClientRect();
+  for (let i = 0; i < items.length; i++) {
+    const target = items[i];
+    if (target === item) continue;
+
+    const targetRect = target.getBoundingClientRect();
+    const targetCenter = targetRect.top + targetRect.height / 2;
+
+    if (noteDragState.currentY > 0 && currentRect.bottom > targetCenter && i > noteDragState.dragIndex) {
+      const oldTop = currentRect.top;
+      notesList.insertBefore(item, target.nextSibling);
+      const newTop = item.getBoundingClientRect().top;
+      noteDragState.currentY += oldTop - newTop;
+      noteDragState.startY = e.clientY - noteDragState.currentY;
+      noteDragState.dragIndex = i;
+      item.style.transform = `translateY(${noteDragState.currentY}px)`;
+      break;
+    }
+
+    if (noteDragState.currentY < 0 && currentRect.top < targetCenter && i < noteDragState.dragIndex) {
+      const oldTop = currentRect.top;
+      notesList.insertBefore(item, target);
+      const newTop = item.getBoundingClientRect().top;
+      noteDragState.currentY += oldTop - newTop;
+      noteDragState.startY = e.clientY - noteDragState.currentY;
+      noteDragState.dragIndex = i;
+      item.style.transform = `translateY(${noteDragState.currentY}px)`;
+      break;
+    }
+  }
+});
+
+window.addEventListener("mouseup", async () => {
+  if (!noteDragState) return;
+  const { item, dragging } = noteDragState;
+  noteDragState = null;
+  if (!dragging) return;
+  suppressNoteClick = true;
+  setTimeout(() => {
+    suppressNoteClick = false;
+  }, 0);
+  item.classList.remove("dragging");
+  item.style.transition = "";
+  item.style.transform = "";
+  item.style.position = "";
+  item.style.zIndex = "";
+  item.style.pointerEvents = "";
+  const orderedIds = [...notesList.querySelectorAll(".note-list-item")]
+    .map((node) => node.dataset.noteId)
+    .filter(Boolean);
+  await window.electronAPI.reorderNotes({ orderedIds });
+  await renderNotesList();
+  await populateRecentMenu();
+});
+
 // update open recent menu
 async function populateRecentMenu() {
   let recent = JSON.parse(localStorage.getItem("recentFiles") || "[]");
@@ -4829,6 +5258,7 @@ async function populateRecentMenu() {
   return noteEntries.length + displayEntries.length;
 }
 populateRecentMenu();
+renderNotesList();
 
 // save as
 async function saveAsFile() {
@@ -5059,6 +5489,8 @@ document.addEventListener("contextmenu", async (e) => {
 
   // Hide editor context menu
   customContextMenu.style.display = "none";
+  noteContextMenu.style.display = "none";
+  rightClickedNoteId = null;
 
   // Update copy & open path button
   updateTabContextMenuState(tabContextMenu, rightClickedTab);
@@ -5185,12 +5617,55 @@ tabContextMenu.addEventListener("click", async (e) => {
   }
 });
 
+noteContextMenu?.addEventListener("click", async (e) => {
+  const action = e.target.closest("button")?.dataset.action;
+  if (!action || !rightClickedNoteId) return;
+
+  const noteId = rightClickedNoteId;
+  noteContextMenu.style.display = "none";
+  rightClickedNoteId = null;
+
+  switch (action) {
+    case "copyText": {
+      const content = await getLiveNoteContent(noteId);
+      if (content !== null) await navigator.clipboard.writeText(content);
+      break;
+    }
+
+    case "duplicate": {
+      const result = await window.electronAPI.duplicateNote(noteId);
+      if (result?.success) {
+        const note = await window.electronAPI.readNote(result.id);
+        const duplicatedTab = await createNoteTab(note?.content || "", null, note);
+        if (duplicatedTab) switchTab(duplicatedTab);
+        await renderNotesList();
+        await populateRecentMenu();
+      }
+      break;
+    }
+
+    case "convertToUntitled":
+      await convertNoteToUntitled(noteId);
+      break;
+
+    case "convertToFile":
+      await convertNoteToFile(noteId);
+      break;
+
+    case "delete":
+      await deleteNoteEverywhere(noteId, { trash: true });
+      break;
+  }
+});
+
 // editor context menu display & position handler
 editor.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 
   tabContextMenu.style.display = "none";
   rightClickedTab = null;
+  noteContextMenu.style.display = "none";
+  rightClickedNoteId = null;
 
   customContextMenu.style.display = "block";
   customContextMenu.style.visibility = "hidden";
@@ -5373,6 +5848,12 @@ function closeContextMenus() {
     closed = true;
   }
 
+  if (isElementOpen(noteContextMenu)) {
+    noteContextMenu.style.display = "none";
+    rightClickedNoteId = null;
+    closed = true;
+  }
+
   if (closed) monacoEditor?.focus();
   return closed;
 }
@@ -5383,7 +5864,7 @@ function closeAppMenus() {
   menu.style.display = "none";
   themeMenu.style.display = "none";
   recentMenu.style.display = "none";
-  menuButton.style.pointerEvents = "auto";
+  setMenuButtonsPointerEvents("auto");
   monacoEditor?.focus();
   return true;
 }
@@ -5413,14 +5894,20 @@ async function closeTopOverlayByEscape() {
     return true;
   }
 
+  if (document.body.classList.contains("notes-panel-open")) {
+    setNotesPanelOpen(false);
+    return true;
+  }
+
   return false;
 }
 
 settingsButton.addEventListener("click", (e) => {
   e.stopPropagation();
+  setNotesPanelOpen(false);
   settingsMenu.style.display = "block";
   menu.style.display = "none";
-  menuButton.style.pointerEvents = "auto";
+  setMenuButtonsPointerEvents("auto");
 });
 editor.addEventListener("click", () => {
   closeSettingsMenu();
@@ -5473,6 +5960,11 @@ window.addEventListener("keydown", async (e) => {
     } else {
       saveFile();
     }
+  }
+  // Ctrl + B
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === "KeyB") {
+    e.preventDefault();
+    toggleNotesPanel();
   }
   // Ctrl + O
   if ((e.ctrlKey || e.metaKey) && e.code === "KeyO") {

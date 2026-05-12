@@ -848,6 +848,19 @@ async function writeNotesIndex(index) {
   await fs.promises.rename(tempPath, targetPath);
 }
 
+function normalizeNotesOrder(notes) {
+  const pinned = notes
+    .filter((note) => note.pinned)
+    .sort((a, b) => (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0));
+  const unpinned = notes
+    .filter((note) => !note.pinned)
+    .sort((a, b) => (Number.isFinite(a.order) ? a.order : 0) - (Number.isFinite(b.order) ? b.order : 0));
+  [...pinned, ...unpinned].forEach((note, index) => {
+    note.order = index;
+  });
+  return notes;
+}
+
 function getNoteTitleFromContent(content) {
   const firstTextLine = String(content || "")
     .split(/\r\n|\r|\n/)
@@ -864,6 +877,9 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
   const contentBytes = Buffer.byteLength(typeof content === "string" ? content : "", "utf8");
   const existing = index.notes.find((note) => note.id === noteId);
   const maxOrder = index.notes.reduce((max, note) => Math.max(max, Number.isFinite(note.order) ? note.order : -1), -1);
+  const minUnpinnedOrder = index.notes
+    .filter((note) => !note.pinned)
+    .reduce((min, note) => Math.min(min, Number.isFinite(note.order) ? note.order : 0), 0);
   const nextEntry = {
     id: noteId,
     fileName: `${noteId}.txt`,
@@ -871,7 +887,7 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
     createdAt: existing?.createdAt || extra.createdAt || now,
     updatedAt: now,
     pinned: existing?.pinned || false,
-    order: Number.isFinite(existing?.order) ? existing.order : maxOrder + 1,
+    order: Number.isFinite(existing?.order) ? existing.order : extra.insertAtTop ? minUnpinnedOrder - 1 : maxOrder + 1,
     contentBytes,
   };
 
@@ -879,6 +895,7 @@ async function upsertNoteIndexEntry(noteId, content, extra = {}) {
     Object.assign(existing, nextEntry);
   } else {
     index.notes.push(nextEntry);
+    normalizeNotesOrder(index.notes);
   }
 
   await writeNotesIndex(index);
@@ -892,7 +909,7 @@ ipcMain.handle("notes:create", async (event, payload = {}) => {
     const content = typeof payload.content === "string" ? payload.content : "";
     const notePath = path.join(notesDir, `${noteId}.txt`);
     await fs.promises.writeFile(notePath, content, "utf8");
-    const meta = await upsertNoteIndexEntry(noteId, content, { title: payload.title });
+    const meta = await upsertNoteIndexEntry(noteId, content, { title: payload.title, insertAtTop: true });
     return { success: true, id: noteId, path: notePath, meta };
   } catch (error) {
     return { success: false, error: error.message };
@@ -944,8 +961,79 @@ ipcMain.handle("notes:delete", async (event, noteId) => {
     await removeFileIfExists(path.join(notesDir, `${noteId}.txt`));
     const index = await readNotesIndex();
     index.notes = index.notes.filter((note) => note.id !== noteId);
+    normalizeNotesOrder(index.notes);
     await writeNotesIndex(index);
     return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:trash", async (event, noteId) => {
+  try {
+    if (!isSafeNoteId(noteId)) return { success: false, error: "Invalid note id." };
+    const notesDir = await ensureNotesDir();
+    const notePath = path.join(notesDir, `${noteId}.txt`);
+    await shell.trashItem(notePath).catch(async () => {
+      await removeFileIfExists(notePath);
+    });
+    const index = await readNotesIndex();
+    index.notes = index.notes.filter((note) => note.id !== noteId);
+    normalizeNotesOrder(index.notes);
+    await writeNotesIndex(index);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:duplicate", async (event, noteId) => {
+  try {
+    if (!isSafeNoteId(noteId)) return { success: false, error: "Invalid note id." };
+    const notesDir = await ensureNotesDir();
+    const sourcePath = path.join(notesDir, `${noteId}.txt`);
+    const content = await fs.promises.readFile(sourcePath, "utf8");
+    const newId = crypto.randomUUID();
+    const newPath = path.join(notesDir, `${newId}.txt`);
+    await fs.promises.writeFile(newPath, content, "utf8");
+    const meta = await upsertNoteIndexEntry(newId, content, { title: getNoteTitleFromContent(content), insertAtTop: true });
+    return { success: true, id: newId, path: newPath, meta };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:update-meta", async (event, payload = {}) => {
+  try {
+    if (!isSafeNoteId(payload.noteId)) return { success: false, error: "Invalid note id." };
+    const index = await readNotesIndex();
+    const note = index.notes.find((item) => item.id === payload.noteId);
+    if (!note) return { success: false, error: "Note not found." };
+    if (typeof payload.pinned === "boolean") {
+      note.pinned = payload.pinned;
+      if (payload.pinned) {
+        note.order = Math.min(-1, ...index.notes.filter((item) => item.pinned && item.id !== note.id).map((item) => item.order || 0)) - 1;
+      }
+    }
+    normalizeNotesOrder(index.notes);
+    await writeNotesIndex(index);
+    return { success: true, note };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("notes:reorder", async (event, payload = {}) => {
+  try {
+    const orderedIds = Array.isArray(payload.orderedIds) ? payload.orderedIds.filter(isSafeNoteId) : [];
+    const index = await readNotesIndex();
+    const idToPosition = new Map(orderedIds.map((id, order) => [id, order]));
+    for (const note of index.notes) {
+      if (idToPosition.has(note.id)) note.order = idToPosition.get(note.id);
+    }
+    normalizeNotesOrder(index.notes);
+    await writeNotesIndex(index);
+    return { success: true, notes: index.notes };
   } catch (error) {
     return { success: false, error: error.message };
   }
