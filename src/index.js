@@ -1564,6 +1564,41 @@ function updateNoteTabTitle(tab, content = null) {
   }
 }
 
+function markPendingSelfSave(tab, content) {
+  if (!tab || !tab.path) return;
+  if (tab._pendingSelfSaveTimer) clearTimeout(tab._pendingSelfSaveTimer);
+  tab._pendingSelfSaveContent = content;
+  tab._pendingSelfSaveTimer = setTimeout(() => {
+    tab._pendingSelfSaveContent = null;
+    tab._pendingSelfSaveTimer = null;
+  }, 1500);
+}
+
+function clearPendingSelfSave(tab) {
+  if (!tab) return;
+  if (tab._pendingSelfSaveTimer) clearTimeout(tab._pendingSelfSaveTimer);
+  tab._pendingSelfSaveTimer = null;
+  tab._pendingSelfSaveContent = null;
+}
+
+function isPendingSelfSaveContent(tab, content) {
+  if (!tab || typeof tab._pendingSelfSaveContent !== "string") return false;
+  return normalizeTextForModelComparison(content) === normalizeTextForModelComparison(tab._pendingSelfSaveContent);
+}
+
+function acceptSelfSaveFileChange(tab, content) {
+  tab.originalContent = content;
+  tab.content = content;
+  tab.isFileSaved = true;
+  tab.isWarned = false;
+  tab._lastExternalContent = content;
+  clearPendingSelfSave(tab);
+  tab.element.querySelector(".name")?.classList.remove("warn");
+  tab.element.querySelector(".close")?.classList.remove("show-unsaved");
+  reloadButton(tab, null, "remove");
+  if (tab === currentTab) updateStatusBar();
+}
+
 async function writeNoteTab(tab, content = null, force = false) {
   if (!tab?.isNote || !tab.noteId) return false;
   const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
@@ -4309,6 +4344,18 @@ function updateReopenClosedTabButtonState() {
   reopenBtn?.classList.toggle("disabled", recentlyClosedFiles.length === 0);
 }
 
+function addTabToRecentlyClosed(tab, tabIndex) {
+  if (!tab) return;
+  if (tab.isNote) {
+    const content = tab.model?.getValue() ?? tab.content ?? "";
+    if (content.trim()) addToRecentlyClosedNote(tab.noteId, tab.name, tabIndex);
+    return;
+  }
+  if (tab.path) {
+    addToRecentlyClosedFiles(tab.path, tabIndex);
+  }
+}
+
 function syncRecentlyClosedFilesState() {
   const openPaths = new Set(tabData.map((tab) => tab.path).filter(Boolean));
   const openNoteIds = new Set(
@@ -4481,9 +4528,11 @@ async function attemptCloseWindow() {
       // close saved tab
       const index = tabData.indexOf(tab);
       if (index !== -1) {
+        addTabToRecentlyClosed(tab, index);
         await deleteTabAutosave(tab);
         tabs.removeChild(tab.element);
         tabData.splice(index, 1);
+        syncRecentlyClosedFilesState();
       }
     }
 
@@ -4686,6 +4735,11 @@ async function refreshFileTabStateOnActivate(tab) {
       return;
     }
 
+    if (isPendingSelfSaveContent(tab, content)) {
+      acceptSelfSaveFileChange(tab, content);
+      return;
+    }
+
     if (tab.isFileSaved && normalizeTextForModelComparison(content) === tab.originalContent) {
       tab._lastExternalContent = content;
       reloadButton(tab, null, "remove");
@@ -4746,6 +4800,11 @@ async function handleFileChange(targetTab, filePath) {
   // Ignore watcher noise if the on-disk content is unchanged from the last known disk snapshot.
   if (content === targetTab._lastExternalContent) {
     reloadButton(targetTab, null, "remove");
+    return;
+  }
+
+  if (isPendingSelfSaveContent(targetTab, content)) {
+    acceptSelfSaveFileChange(targetTab, content);
     return;
   }
 
@@ -5825,6 +5884,7 @@ async function saveFile() {
   }
 
   const content = monacoEditor.getValue();
+  markPendingSelfSave(active, content);
   const result = await window.electronAPI.saveToFile(active.path, content);
   if (result.success) {
     console.log("File saved successfully");
@@ -5841,6 +5901,7 @@ async function saveFile() {
     reloadButton(active, null, "remove");
     showMessage("file-saved");
   } else {
+    clearPendingSelfSave(active);
     console.error("Failed to save file:", result.error);
     if (result.error.includes("EPERM")) {
       return await saveAsFile();
