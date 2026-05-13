@@ -438,7 +438,11 @@ function updateMenuLabels() {
   // notes panel
   const notesSearch = document.getElementById("notes-search");
   if (notesSearch) notesSearch.placeholder = i18next.t("notePanel.search");
-  if (notesAddButton) notesAddButton.setAttribute("aria-label", i18next.t("notePanel.newNote"));
+  if (notesAddButton) {
+    const newNoteLabel = i18next.t("notePanel.newNote");
+    notesAddButton.setAttribute("aria-label", newNoteLabel);
+    notesAddButton.title = newNoteLabel;
+  }
   if (notesPanelClose) notesPanelClose.setAttribute("aria-label", i18next.t("notePanel.closePanel"));
   document.querySelector('#note-context-menu button[data-action="copyText"]').textContent =
     i18next.t("notePanel.copyText");
@@ -493,8 +497,10 @@ function updateMenuLabels() {
 langSwitcher.addEventListener("change", () => {
   const newLang = langChoices.getValue(true);
 
-  i18next.changeLanguage(newLang).then(() => {
+  i18next.changeLanguage(newLang).then(async () => {
     updateMenuLabels();
+    await renderNotesList();
+    await populateRecentMenu();
     updateStatusBar();
   });
 
@@ -2681,23 +2687,32 @@ window.addEventListener("resize", () => {
 window.addEventListener("wheel", updateMenuPositions, { passive: true });
 
 // recent menu display
+let recentMenuHoverSeq = 0;
+
+function shouldKeepRecentMenuOpen() {
+  return menu.style.display === "block" && (openRecentBtn.matches(":hover") || recentMenu.matches(":hover"));
+}
+
 openRecentBtn.addEventListener("mouseenter", async () => {
+  const hoverSeq = ++recentMenuHoverSeq;
   const displayCount = await populateRecentMenu();
-  if (displayCount > 0) {
+  if (hoverSeq === recentMenuHoverSeq && displayCount > 0 && shouldKeepRecentMenuOpen()) {
     recentMenu.style.display = "inline-block";
     updateMenuPositions();
   }
 });
 openRecentBtn.addEventListener("mouseleave", () => {
+  recentMenuHoverSeq++;
   setTimeout(() => {
-    if (!recentMenu.matches(":hover") && !openRecentBtn.matches(":hover")) {
+    if (!shouldKeepRecentMenuOpen()) {
       recentMenu.style.display = "none";
     }
   }, 100);
 });
 recentMenu.addEventListener("mouseleave", () => {
+  recentMenuHoverSeq++;
   setTimeout(() => {
-    if (!recentMenu.matches(":hover") && !openRecentBtn.matches(":hover")) {
+    if (!shouldKeepRecentMenuOpen()) {
       recentMenu.style.display = "none";
     }
   }, 100);
@@ -5014,7 +5029,9 @@ async function renderNotesList() {
     pinButton.className = "note-pin-button";
     pinButton.type = "button";
     pinButton.innerHTML = NOTE_PIN_ICON_SVG;
-    pinButton.setAttribute("aria-label", note.pinned ? i18next.t("notePanel.unpinNote") : i18next.t("notePanel.pinNote"));
+    const pinLabel = note.pinned ? i18next.t("notePanel.unpinNote") : i18next.t("notePanel.pinNote");
+    pinButton.setAttribute("aria-label", pinLabel);
+    pinButton.title = pinLabel;
     pinButton.addEventListener("click", async (e) => {
       e.stopPropagation();
       await window.electronAPI.updateNoteMeta({ noteId: note.id, pinned: !note.pinned });
