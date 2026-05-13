@@ -3,6 +3,7 @@ const log = require("electron-log");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
+  getAppSessionId: () => ipcRenderer.invoke("get-app-session-id"),
   openExternal: (url) => shell.openExternal(url),
   sendMessage: (msg) => ipcRenderer.send("message", msg),
   onReceive: (callback) => ipcRenderer.on("reply", callback),

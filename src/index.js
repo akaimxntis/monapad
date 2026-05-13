@@ -50,6 +50,8 @@ const fontSizeValue = document.getElementById("font-size-value");
 const fontSizeDecrease = document.getElementById("font-size-decrease");
 const fontSizeIncrease = document.getElementById("font-size-increase");
 const STORAGE_KEY = "monacoFontSizePersistent";
+const PINNED_TABS_STORAGE_KEY = "monapadPinnedTabs";
+const PINNED_TABS_WINDOW_STORAGE_KEY = "monapadPinnedTabsByWindow";
 let persistentFontSize = Number(localStorage.getItem(STORAGE_KEY)) || 16;
 let fontSize = persistentFontSize;
 
@@ -107,6 +109,7 @@ let lastPreviewX = null;
 let lastPreviewY = null;
 let draggingTab = null;
 let draggingTabData = null;
+let draggingTabWasPinned = false;
 let dragStartX = 0;
 let originalX = 0;
 let startX = 0;
@@ -120,6 +123,8 @@ let cachedToolbarRect = null;
 let lastWindowCheck = 0;
 let externalCancelDragging = null;
 let externalPreviewTargetWindowId = null;
+let cursorWindowMoveFrame = null;
+let pendingCursorWindowPos = null;
 // flag indicates enableTabDragging is middle of mousedown event, in case mouseup triggered middle of it
 let isHandlingMouseDown = false;
 let deferredOnMouseUp = false;
@@ -148,6 +153,9 @@ const WRAP_MEASURE_OPTIONS = {
   wrappingStrategy: "advanced",
   disableMonospaceOptimizations: true,
 };
+
+const TAB_PIN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/></svg>`;
+const TAB_PIN_DIRTY_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18.15 10.35l1.35 -1.35" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l5.37 5.37" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M9 15l-4.5 4.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M14.5 4l5.5 5.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><circle cx="16.94" cy="16.44" r="3.06" fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>`;
 const AUTOSAVE_DEBOUNCE_MS = 3000;
 const AUTOSAVE_FORCE_MS = 30000;
 const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
@@ -207,6 +215,26 @@ window.electronAPI.getAppVersion().then((versions) => {
     `Electron: ${versions.electron}<br>Chromium: ${versions.chrome}<br>Node.js: ${versions.node}<br>V8: ${versions.v8}`;
 });
 
+function scheduleCursorWindowMove(screenX, screenY) {
+  pendingCursorWindowPos = { x: screenX, y: screenY };
+  if (cursorWindowMoveFrame !== null) return;
+
+  cursorWindowMoveFrame = requestAnimationFrame(() => {
+    cursorWindowMoveFrame = null;
+    const pos = pendingCursorWindowPos;
+    pendingCursorWindowPos = null;
+    if (pos) window.electronAPI.moveCursorWindow(pos.x, pos.y);
+  });
+}
+
+function resetCursorWindowMove() {
+  if (cursorWindowMoveFrame !== null) {
+    cancelAnimationFrame(cursorWindowMoveFrame);
+    cursorWindowMoveFrame = null;
+  }
+  pendingCursorWindowPos = null;
+}
+
 // file open on launch
 window.electronAPI.onOpenFile(async (filePath) => {
   try {
@@ -252,6 +280,20 @@ function getTabDropPlacementByClientX(clientX, excludeTab = null) {
   return { index: tabElements.length, left: Math.max(0, tabsRect.width), referenceTab: null };
 }
 
+function clampDropPlacementAfterPinnedTabs(placement, excludeTab = null) {
+  const pinnedCount = getPinnedTabCount();
+  if (!placement || placement.index === null || placement.index >= pinnedCount) return placement;
+
+  const tabElements = Array.from(tabs.querySelectorAll(".tab")).filter((tab) => tab !== excludeTab);
+  const referenceTab = tabElements[pinnedCount] || null;
+  const tabsRect = tabs.getBoundingClientRect();
+  const left = referenceTab
+    ? Math.max(0, referenceTab.getBoundingClientRect().left - tabsRect.left)
+    : Math.max(0, tabsRect.width);
+
+  return { index: pinnedCount, left, referenceTab };
+}
+
 function getTabInsertIndexByScreenX(screenX, excludeTab = null) {
   if (typeof screenX !== "number") return null;
   return getTabDropPlacementByClientX(screenX - window.screenX, excludeTab).index;
@@ -277,21 +319,26 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
     typeof receivedTabData.dropScreenX === "number"
       ? getTabDropPlacementByClientX(receivedTabData.dropScreenX - window.screenX, existingTab?.element || null)
       : { index: null, referenceTab: null };
-  const insertIndex = placement.index;
+  if (existingTab?.isPinned) {
+    switchTab(existingTab);
+    return;
+  }
+  const adjustedPlacement = clampDropPlacementAfterPinnedTabs(placement, existingTab?.element || null);
+  const insertIndex = adjustedPlacement.index;
 
   if (payload.isNote) {
-    await createNoteTabFromPayload(payload, insertIndex, placement);
+    await createNoteTabFromPayload(payload, insertIndex, adjustedPlacement);
     return;
   }
 
   if (existingTab) {
-    moveTabToDropPlacement(existingTab, placement);
+    moveTabToDropPlacement(existingTab, adjustedPlacement);
     switchTab(existingTab);
     return;
   }
 
   // remove existing initial tab
-  if (tabData.length === 1 && !tabData[0].content.trim() && !tabData[0].path) {
+  if (tabData.length === 1 && !tabData[0].isPinned && !tabData[0].content.trim() && !tabData[0].path) {
     const defaultTab = tabData[0];
     tabs.removeChild(defaultTab.element);
     tabData = [];
@@ -434,6 +481,7 @@ function updateMenuLabels() {
   document.querySelector('button[data-action="openInNewWindow"] .label').textContent =
     i18next.t("tabMenu.openInNewWindow");
   document.querySelector('button[data-action="keepOpen"] .label').textContent = i18next.t("tabMenu.keepOpen");
+  updateTabContextMenuState(tabContextMenu, rightClickedTab);
 
   // notes panel
   const notesSearch = document.getElementById("notes-search");
@@ -1327,6 +1375,19 @@ monacoEditor.addAction({
   },
 });
 
+monacoEditor.addAction({
+  id: "monapad.toggleTabPin",
+  label: "Pin/Unpin Tab",
+  keybindings: [
+    monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyMod.Shift | monaco.KeyCode.Enter),
+  ],
+  precondition: null,
+  keybindingContext: null,
+  run: function () {
+    toggleTabPinned(currentTab);
+  },
+});
+
 // heading shortcut
 function createToggleHeadingAction(level) {
   const id = `toggle-h${level}`;
@@ -1622,7 +1683,9 @@ async function writeNoteTab(tab, content = null, force = false) {
     tab.noteDirty = false;
     const close = tab.element?.querySelector(".close");
     if (close) close.classList.remove("show-unsaved");
+    updatePinnedTabIcon(tab);
     if (tab === currentTab) updateStatusBar();
+    savePinnedTabsState();
     renderNotesList();
     return true;
   } catch (error) {
@@ -1655,7 +1718,7 @@ function sortNotesForPanel(notes = []) {
 function getReusableEmptyUntitledTab() {
   if (tabData.length !== 1) return null;
   const tab = tabData[0];
-  if (tab.path || tab.isNote || tab.isWarned) return null;
+  if (tab.path || tab.isNote || tab.isWarned || tab.isPinned) return null;
   const content =
     monacoEditor && tab === currentTab ? monacoEditor.getValue() : (tab.model?.getValue() ?? tab.content ?? "");
   return content.trim() ? null : tab;
@@ -1793,6 +1856,7 @@ function scheduleAllUnsavedTabAutosaves() {
   for (const tab of tabData) {
     scheduleTabAutosave(tab, tab.model?.getValue() ?? tab.content ?? "");
   }
+  savePinnedTabsState();
 }
 
 async function deleteTabAutosave(tab) {
@@ -1842,7 +1906,7 @@ async function restoreAutosaveDrafts() {
     const drafts = await window.electronAPI.listAutosaveDrafts({ ownerId });
     if (!Array.isArray(drafts) || drafts.length === 0) return;
 
-    if (tabData.length === 1 && !tabData[0].path && !tabData[0].model?.getValue()?.trim()) {
+    if (tabData.length === 1 && !tabData[0].isPinned && !tabData[0].path && !tabData[0].model?.getValue()?.trim()) {
       const emptyTab = tabData[0];
       tabs.removeChild(emptyTab.element);
       emptyTab.model?.dispose();
@@ -1856,7 +1920,11 @@ async function restoreAutosaveDrafts() {
         continue;
       }
 
-      const newTabData = createTab(draft.name, "", null);
+      let newTabData = tabData.find((tab) => tab.draftId === draft.id);
+      if (!newTabData) {
+        newTabData = createTab(draft.name, "", null);
+        newTabData.draftId = draft.id;
+      }
       newTabData.draftId = draft.id;
       applyRestoredAutosaveContent(newTabData, "", draft.content);
     }
@@ -1943,6 +2011,202 @@ function applyRestoredAutosaveContent(tab, savedContent, restoredContent) {
   tab._ignoreUnsavedCheck = false;
   syncTabSaveState(tab, modelContent);
   scheduleTabAutosave(tab, modelContent);
+}
+
+async function getPinnedTabEntries() {
+  try {
+    const legacy = JSON.parse(localStorage.getItem(PINNED_TABS_STORAGE_KEY) || "[]");
+    if (Array.isArray(legacy) && legacy.length > 0) {
+      localStorage.removeItem(PINNED_TABS_STORAGE_KEY);
+      return normalizePinnedTabEntries(legacy);
+    }
+
+    const byWindow = JSON.parse(localStorage.getItem(PINNED_TABS_WINDOW_STORAGE_KEY) || "{}");
+    if (!byWindow || typeof byWindow !== "object") return [];
+    const sessionId = await window.electronAPI.getAppSessionId();
+    const savedSessionId = localStorage.getItem(`${PINNED_TABS_WINDOW_STORAGE_KEY}:session`);
+    if (sessionId && savedSessionId !== sessionId) {
+      const aggregated = normalizePinnedTabEntries(Object.values(byWindow).flat().filter(Boolean));
+      localStorage.setItem(PINNED_TABS_WINDOW_STORAGE_KEY, JSON.stringify({}));
+      localStorage.setItem(`${PINNED_TABS_WINDOW_STORAGE_KEY}:session`, sessionId);
+      return aggregated;
+    }
+    const windowKey = String(myWindowId || "main");
+    const entries = byWindow[windowKey] || [];
+    return Array.isArray(entries) ? normalizePinnedTabEntries(entries) : [];
+  } catch {
+    return [];
+  }
+}
+
+function getPinnedTabEntryKey(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  if (entry.type === "file" && entry.path) return `file:${String(entry.path).toLowerCase()}`;
+  if (entry.type === "note" && entry.noteId) return `note:${entry.noteId}`;
+  if (entry.type === "draft" && entry.draftId) return `draft:${entry.draftId}`;
+  return null;
+}
+
+function normalizePinnedTabEntries(entries) {
+  const seen = new Set();
+  const normalized = [];
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const key = getPinnedTabEntryKey(entry);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(entry);
+  }
+  return normalized;
+}
+
+function writePinnedTabEntries(entries) {
+  const windowKey = String(myWindowId || "main");
+  let byWindow = {};
+  try {
+    byWindow = JSON.parse(localStorage.getItem(PINNED_TABS_WINDOW_STORAGE_KEY) || "{}") || {};
+  } catch {
+    byWindow = {};
+  }
+  byWindow[windowKey] = normalizePinnedTabEntries(entries);
+  localStorage.setItem(PINNED_TABS_WINDOW_STORAGE_KEY, JSON.stringify(byWindow));
+  window.electronAPI.getAppSessionId?.().then((sessionId) => {
+    if (sessionId) localStorage.setItem(`${PINNED_TABS_WINDOW_STORAGE_KEY}:session`, sessionId);
+  });
+}
+
+function getPersistablePinnedTabEntry(tab) {
+  if (!tab?.isPinned) return null;
+  const content = tab.model?.getValue() ?? tab.content ?? "";
+  if (tab.isNote && tab.noteId && content.trim()) return { type: "note", noteId: tab.noteId };
+  if (tab.path) return { type: "file", path: tab.path };
+  if (!tab.path && !tab.isNote && tab.draftId && content.trim())
+    return { type: "draft", draftId: tab.draftId, name: tab.name };
+  return null;
+}
+
+function savePinnedTabsState() {
+  const entries = tabData.map(getPersistablePinnedTabEntry).filter(Boolean);
+  writePinnedTabEntries(entries);
+}
+
+function savePinnedTabsStateForDiscard() {
+  const entries = tabData
+    .filter((tab) => tab.isPinned)
+    .map((tab) => {
+      if (tab.isNote && tab.noteId) {
+        const content = tab.model?.getValue() ?? tab.content ?? "";
+        return content.trim() ? { type: "note", noteId: tab.noteId } : null;
+      }
+      if (tab.path) return { type: "file", path: tab.path };
+      return null;
+    })
+    .filter(Boolean);
+  writePinnedTabEntries(entries);
+}
+
+function updatePinnedTabIcon(tab) {
+  if (!tab?.element) return;
+  const close = tab.element.querySelector(".close");
+  if (!close) return;
+  close.querySelector(".pin-svg")?.remove();
+  if (!tab.isPinned) return;
+
+  const pinSvg = document.createElement("div");
+  pinSvg.className = `pin-svg${tab.isFileSaved ? "" : " dirty"}`;
+  pinSvg.innerHTML = tab.isFileSaved ? TAB_PIN_ICON_SVG : TAB_PIN_DIRTY_ICON_SVG;
+  close.appendChild(pinSvg);
+}
+
+function setTabPinned(tab, pinned, options = {}) {
+  if (!tab) return false;
+  const nextPinned = Boolean(pinned);
+  if (tab.isPinned === nextPinned && !options.force) return false;
+  if (nextPinned && tab.isNotePreview) keepOpenNoteTab(tab);
+  const targetPinnedIndex = nextPinned ? getPinnedTabCount() : null;
+  tab.isPinned = nextPinned;
+  tab.element?.classList.toggle("pinned", nextPinned);
+  updatePinnedTabIcon(tab);
+  if (nextPinned && !options.skipMove) moveTabToIndex(tab, targetPinnedIndex);
+  if (!nextPinned && !options.skipMove)
+    moveTabToIndex(tab, tabData.filter((candidate) => candidate !== tab && candidate.isPinned).length);
+  if (!options.skipNormalize) normalizePinnedTabs();
+  savePinnedTabsState();
+  if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+  return true;
+}
+
+function toggleTabPinned(tab = currentTab) {
+  if (!tab) return false;
+  return setTabPinned(tab, !tab.isPinned);
+}
+
+function getPinnedTabCount() {
+  let count = 0;
+  for (const tab of tabData) {
+    if (!tab.isPinned) break;
+    count++;
+  }
+  return count;
+}
+
+function normalizePinnedTabs() {
+  const orderedTabs = [...tabData.filter((tab) => tab.isPinned), ...tabData.filter((tab) => !tab.isPinned)];
+  const changed = orderedTabs.some((tab, index) => tabData[index] !== tab);
+  if (changed) {
+    tabData = orderedTabs;
+    for (const tab of tabData) tabs.appendChild(tab.element);
+  }
+  for (const tab of tabData) {
+    tab.element?.classList.toggle("pinned", Boolean(tab.isPinned));
+    updatePinnedTabIcon(tab);
+  }
+  updateTabAdjacencyClasses();
+  savePinnedTabsState();
+}
+
+async function restorePinnedTabs() {
+  const entries = await getPinnedTabEntries();
+  if (entries.length === 0) return;
+
+  const emptyInitialTab =
+    tabData.length === 1 && !tabData[0].path && !tabData[0].isNote && !tabData[0].model?.getValue()?.trim();
+  const initialEmptyTab = emptyInitialTab ? tabData[0] : null;
+
+  for (const entry of entries) {
+    let tab = null;
+    if (entry?.type === "file" && entry.path) {
+      const before = [...tabData];
+      await loadFileByPath(entry.path, getPinnedTabCount());
+      tab =
+        tabData.find((candidate) => candidate.path === entry.path && !before.includes(candidate)) ||
+        tabData.find((candidate) => candidate.path === entry.path);
+    } else if (entry?.type === "note" && entry.noteId) {
+      const note = await window.electronAPI.readNote(entry.noteId);
+      if (note?.exists) tab = await createNoteTab(note.content || "", getPinnedTabCount(), note, { preview: false });
+    } else if (entry?.type === "draft" && entry.draftId) {
+      tab = createTab(entry.name || null, "", null, getPinnedTabCount());
+      tab.draftId = entry.draftId;
+    }
+    if (tab) setTabPinned(tab, true, { skipMove: true, skipNormalize: true, force: true });
+  }
+
+  if (
+    initialEmptyTab &&
+    tabData.length > 1 &&
+    tabData.includes(initialEmptyTab) &&
+    !initialEmptyTab.isPinned &&
+    !initialEmptyTab.path &&
+    !initialEmptyTab.isNote &&
+    !initialEmptyTab.model?.getValue()?.trim()
+  ) {
+    tabs.removeChild(initialEmptyTab.element);
+    initialEmptyTab.model?.dispose();
+    tabData = tabData.filter((tab) => tab !== initialEmptyTab);
+    if (currentTab === initialEmptyTab) currentTab = null;
+  }
+
+  normalizePinnedTabs();
+  if (tabData.length) switchTab(tabData[0]);
 }
 
 function updateDeviceShareButtonState() {
@@ -2524,6 +2788,12 @@ document.getElementById("triggerShowCommandsBtn").addEventListener("click", trig
 createTab();
 switchTab(tabData[0]);
 setTimeout(() => monacoEditor?.focus(), 0);
+
+(async () => {
+  await windowIdReady;
+  await restorePinnedTabs();
+  await restoreAutosaveDrafts();
+})();
 
 function setNotesPanelOpen(open) {
   if (document.body.classList.contains("notes-panel-open") === open) return;
@@ -3369,11 +3639,12 @@ function updateStatusBar() {
 }
 
 // drag & drop indicator when dragging tab to another window
-function showDropIndicator(clientX, excludeTab = null) {
+function showDropIndicator(clientX, excludeTab = null, clampAfterPinned = false) {
   if (!dropIndicator) return;
   const tabsRect = tabs.getBoundingClientRect();
   const effectiveExcludeTab = excludeTab || draggingTab;
-  let { left } = getTabDropPlacementByClientX(clientX, effectiveExcludeTab);
+  const placement = getTabDropPlacementByClientX(clientX, effectiveExcludeTab);
+  let { left } = clampAfterPinned ? clampDropPlacementAfterPinnedTabs(placement, effectiveExcludeTab) : placement;
   left = Math.max(0, Math.min(left, tabsRect.width));
   const indicatorWidth = dropIndicator.offsetWidth || 2;
   const notesPanelFirstOffset = document.body.classList.contains("notes-panel-open") && left === 0 ? 2 : 0;
@@ -3398,16 +3669,16 @@ function showExternalDropIndicator(screenX, screenY, excludeTab = null) {
   const tabsRect = tabs.getBoundingClientRect();
 
   if (localClientX <= tabsRect.left) {
-    showDropIndicator(tabsRect.left, excludeTab);
+    showDropIndicator(tabsRect.left, excludeTab, true);
     return;
   }
 
   if (localClientX >= tabsRect.right) {
-    showDropIndicator(tabsRect.right, excludeTab);
+    showDropIndicator(tabsRect.right, excludeTab, true);
     return;
   }
 
-  showDropIndicator(localClientX, excludeTab);
+  showDropIndicator(localClientX, excludeTab, true);
 }
 
 function resetExternalPreviewTargetWindow() {
@@ -3450,6 +3721,8 @@ function enableTabDragging(tab, data) {
     draggingTab = tab;
     // console.log("📌mousedown: draggingTab set");
     draggingTabData = data;
+    draggingTabWasPinned = Boolean(data.isPinned);
+    document.body.classList.add("tab-dragging");
     dragIndex = tabData.indexOf(data);
     wasOnlyTab = tabData.length === 1;
     startX = e.clientX;
@@ -3505,7 +3778,7 @@ function enableTabDragging(tab, data) {
       window.electronAPI.createCursorWindow();
 
       if (shouldCheckWindow()) {
-        const isWarn = draggingTabData.isWarned;
+        const isWarn = draggingTabData.isWarned || draggingTabData.isPinned;
         window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY }).then(async (targetWindowId) => {
           if (!windowBoundsCache) {
             setExternalPreviewTargetWindow(null);
@@ -3547,12 +3820,13 @@ function enableTabDragging(tab, data) {
         });
       }
 
-      window.electronAPI.moveCursorWindow(e.screenX, e.screenY);
+      scheduleCursorWindowMove(e.screenX, e.screenY);
       return;
     } else {
       tabs.classList.add("dragging");
       draggingTab.style.opacity = "1";
       overlayWindowVisible = false;
+      resetCursorWindowMove();
       window.electronAPI.destroyCursorWindow();
       setExternalPreviewTargetWindow(null);
       hideDropIndicator();
@@ -3625,12 +3899,13 @@ function enableTabDragging(tab, data) {
 
     if (!draggingTab || !e) {
       console.warn("⚠️ onMouseUp called with invalid state", draggingTab, e);
+      document.body.classList.remove("tab-dragging");
       dragStartClientPos = null;
       externalCancelDragging = null;
       return;
     }
 
-    const isWarn = draggingTabData.isWarned;
+    const isWarn = draggingTabData.isWarned || draggingTabData.isPinned;
     const releasedTabData = tabData.find((t) => t.element === draggingTab);
 
     draggingTab.style.transition = "";
@@ -3639,9 +3914,11 @@ function enableTabDragging(tab, data) {
     draggingTab.style.pointerEvents = "";
     draggingTab.style.opacity = "1";
     tabs.classList.remove("dragging");
+    document.body.classList.remove("tab-dragging");
 
     if (overlayWindowVisible) {
       overlayWindowVisible = false;
+      resetCursorWindowMove();
       window.electronAPI.destroyCursorWindow();
     }
 
@@ -3649,6 +3926,7 @@ function enableTabDragging(tab, data) {
     hideDropIndicator();
     draggingTab = null;
     draggingTabData = null;
+    draggingTabWasPinned = false;
     cachedToolbarRect = null;
     externalCancelDragging = null;
     dragIndex = -1;
@@ -3675,6 +3953,12 @@ function enableTabDragging(tab, data) {
       e.screenY <= myBounds.y + myBounds.height;
 
     windowBoundsCache = null;
+
+    if (!isOutsideToolbar) {
+      normalizePinnedTabs();
+      dragStartClientPos = null;
+      return;
+    }
 
     // get window id from cursor position
     window.electronAPI
@@ -3743,6 +4027,7 @@ function enableTabDragging(tab, data) {
     document.removeEventListener("mouseup", onMouseUp);
 
     if (!draggingTab) {
+      document.body.classList.remove("tab-dragging");
       dragStartClientPos = null;
       externalCancelDragging = null;
       return;
@@ -3754,14 +4039,17 @@ function enableTabDragging(tab, data) {
     draggingTab.style.pointerEvents = "";
     draggingTab.style.opacity = "1";
     tabs.classList.remove("dragging");
+    document.body.classList.remove("tab-dragging");
 
     if (overlayWindowVisible) {
       overlayWindowVisible = false;
+      resetCursorWindowMove();
       window.electronAPI.destroyCursorWindow();
     }
 
     draggingTab = null;
     draggingTabData = null;
+    draggingTabWasPinned = false;
     cachedToolbarRect = null;
     dragStartClientPos = null;
     externalCancelDragging = null;
@@ -3785,6 +4073,7 @@ document.addEventListener("mouseup", (e) => {
 
 async function openTabInNewWindow(targetTabData, position) {
   if (!targetTabData) return;
+  if (targetTabData.isPinned) return;
   await writeTabAutosave(targetTabData);
 
   const tabInfo = {
@@ -3919,6 +4208,7 @@ function createTab(name, content = "", path = null, insertIndex = null) {
     viewState: null,
     isMarkdown: false,
     isWarned: false,
+    isPinned: false,
     originalContent: content,
     _lastExternalContent: path ? content : null,
     draftId: path ? null : createAutosaveId(),
@@ -3935,6 +4225,10 @@ function createTab(name, content = "", path = null, insertIndex = null) {
 
   close.onclick = async (e) => {
     e.stopPropagation();
+    if (data.isPinned) {
+      setTabPinned(data, false);
+      return;
+    }
 
     clearPendingTabsWidthAfterClose();
     if (tabAreaHovered && !isHoveringLastTab) {
@@ -3961,7 +4255,7 @@ function createTab(name, content = "", path = null, insertIndex = null) {
 
   // tab middle click
   tab.addEventListener("auxclick", async (e) => {
-    if (e.button === 1) {
+    if (e.button === 1 && !data.isPinned) {
       e.preventDefault();
       e.stopPropagation();
 
@@ -4078,6 +4372,11 @@ async function saveAsNote() {
 // close tab
 async function attemptCloseTab(data) {
   return new Promise(async (resolve) => {
+    if (data?.isPinned) {
+      resolve("pinned");
+      return;
+    }
+
     const tab = data.element;
 
     if (data.isNote) {
@@ -4525,6 +4824,11 @@ async function attemptCloseWindow() {
         }
       }
 
+      if (tab.isPinned) {
+        savePinnedTabsState();
+        continue;
+      }
+
       // close saved tab
       const index = tabData.indexOf(tab);
       if (index !== -1) {
@@ -4549,6 +4853,7 @@ async function attemptCloseWindow() {
   const onDiscardAll = async () => {
     closeConfirm();
     removeListeners();
+    savePinnedTabsStateForDiscard();
 
     // close all tabs
     for (const tab of [...tabData]) {
@@ -4838,6 +5143,7 @@ function applyFileContentToEditor(tab, content) {
 
   const close = tab.element.querySelector(".close");
   if (close) close.classList.remove("show-unsaved");
+  updatePinnedTabIcon(tab);
 
   updateStatusBar();
   applyDecorations();
@@ -4920,7 +5226,7 @@ async function loadFileByPath(filePath, insertIndex = null) {
   if (tabData.length === 1) {
     const singleTab = tabData[0];
     const currentContent = monacoEditor ? monacoEditor.getValue() : "";
-    if (!singleTab.content.trim() && !currentContent.trim()) {
+    if (!singleTab.isPinned && !singleTab.content.trim() && !currentContent.trim()) {
       await deleteTabAutosave(singleTab);
       singleTab.name = fileName;
       singleTab._lastExternalContent = content;
@@ -5233,7 +5539,7 @@ async function getNoteTabPayload(noteId) {
       isNote: true,
       noteId: openTab.noteId,
       notePath: openTab.notePath,
-    noteTitle: truncateNoteTitle(openTab.noteTitle || openTab.name),
+      noteTitle: truncateNoteTitle(openTab.noteTitle || openTab.name),
       noteCreatedAt: openTab.noteCreatedAt,
       noteUpdatedAt: openTab.noteUpdatedAt,
       isFileSaved: true,
@@ -5270,8 +5576,14 @@ async function getNoteTabPayload(noteId) {
 async function createNoteTabFromPayload(payload, insertIndex = null, placement = null) {
   if (!payload?.noteId) return null;
   const existingTab = tabData.find((tab) => tab.isNote && tab.noteId === payload.noteId);
+  const pinnedCount = getPinnedTabCount();
+  const adjustedPlacement =
+    placement && !existingTab?.isPinned
+      ? { ...placement, index: Math.max(placement.index ?? 0, pinnedCount), referenceTab: null }
+      : placement;
+  const adjustedInsertIndex = insertIndex === null ? null : Math.max(insertIndex, pinnedCount);
   if (existingTab) {
-    moveTabToDropPlacement(existingTab, placement || { index: insertIndex, referenceTab: null });
+    moveTabToDropPlacement(existingTab, adjustedPlacement || { index: adjustedInsertIndex, referenceTab: null });
     switchTab(existingTab);
     return existingTab;
   }
@@ -5287,7 +5599,7 @@ async function createNoteTabFromPayload(payload, insertIndex = null, placement =
       updatedAt: payload.noteUpdatedAt,
     },
   };
-  const tab = await createNoteTab(payload.content || "", insertIndex, note);
+  const tab = await createNoteTab(payload.content || "", adjustedInsertIndex, note);
   if (tab) switchTab(tab);
   return tab;
 }
@@ -5312,6 +5624,7 @@ function moveTabToDropPlacement(tab, placement = null) {
   if (reference && reference !== tab.element) tabs.insertBefore(tab.element, reference);
   else tabs.appendChild(tab.element);
 
+  normalizePinnedTabs();
   updateTabAdjacencyClasses();
   scheduleAllUnsavedTabAutosaves();
   return tab;
@@ -5320,6 +5633,7 @@ function moveTabToDropPlacement(tab, placement = null) {
 function getActiveTabInsertIndex(excludeTab = null) {
   const active = tabData.find((tab) => tab.element.classList.contains("active"));
   if (!active) return tabData.length;
+  if (active.isPinned) return getPinnedTabCount();
   if (active === excludeTab) return tabData.indexOf(active);
 
   const activeIndex = tabData.indexOf(active);
@@ -5346,6 +5660,7 @@ function moveTabToIndex(tab, index) {
   if (reference && reference !== tab.element) tabs.insertBefore(tab.element, reference);
   else tabs.appendChild(tab.element);
 
+  normalizePinnedTabs();
   updateTabAdjacencyClasses();
   scheduleAllUnsavedTabAutosaves();
   return tab;
@@ -5428,6 +5743,7 @@ function cleanupNoteExternalDrag() {
   resetExternalPreviewTargetWindow();
   if (overlayWindowVisible) {
     overlayWindowVisible = false;
+    resetCursorWindowMove();
     window.electronAPI.destroyCursorWindow();
   }
   windowBoundsCache = null;
@@ -5483,14 +5799,21 @@ function isScreenPointInMyWindow(e) {
 
 function updateNoteExternalDragPreview(e) {
   if (!noteDragState?.externalStarted) return;
-  window.electronAPI.moveCursorWindow(e.screenX, e.screenY);
+  const existingNoteTab = getOpenNoteTabById(noteDragState.noteId);
+  scheduleCursorWindowMove(e.screenX, e.screenY);
+  if (existingNoteTab?.isPinned) {
+    resetExternalPreviewTargetWindow();
+    window.electronAPI.setCursorWindowState("forbidden");
+    hideDropIndicator();
+    return;
+  }
   const shouldCheckTargetWindow = windowBoundsCache && performance.now() - lastWindowCheck > 100;
   if (shouldCheckTargetWindow) lastWindowCheck = performance.now();
 
   if (isScreenPointInMyWindow(e)) {
     resetExternalPreviewTargetWindow();
     window.electronAPI.setCursorWindowState("move");
-    showDropIndicator(e.clientX, getOpenNoteTabById(noteDragState.noteId)?.element || null);
+    showDropIndicator(e.clientX, existingNoteTab?.element || null, true);
     return;
   }
 
@@ -5550,6 +5873,7 @@ async function finishNoteExternalDrag(e) {
   if (!payload) return;
 
   const targetWindowId = await window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY });
+  if (getOpenNoteTabById(state.noteId)?.isPinned) return;
   if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow) {
     await window.electronAPI.sendTabToWindow(targetWindowId, {
       tabInfo: payload,
@@ -5740,28 +6064,6 @@ async function populateRecentMenu() {
   }
   openRecentBtn.classList.remove("disabled");
 
-  noteEntries.forEach((note) => {
-    const button = document.createElement("button");
-    const span = document.createElement("span");
-    const title = truncateNoteTitle(note.title || "New Note");
-    span.textContent = title;
-
-    button.appendChild(span);
-    button.title = title;
-
-    button.addEventListener("click", async () => {
-      recentMenu.style.display = "none";
-      await openNoteById(note.id, { preview: false });
-    });
-    recentMenu.appendChild(button);
-  });
-
-  if (noteEntries.length > 0 && displayEntries.length > 0) {
-    const hr = document.createElement("div");
-    hr.className = "hr";
-    recentMenu.appendChild(hr);
-  }
-
   displayEntries.forEach(({ path }) => {
     const button = document.createElement("button");
     const span = document.createElement("span");
@@ -5778,6 +6080,28 @@ async function populateRecentMenu() {
       } else {
         console.warn("Invalid path value:", path);
       }
+    });
+    recentMenu.appendChild(button);
+  });
+
+  if (noteEntries.length > 0 && displayEntries.length > 0) {
+    const hr = document.createElement("div");
+    hr.className = "hr";
+    recentMenu.appendChild(hr);
+  }
+
+  noteEntries.forEach((note) => {
+    const button = document.createElement("button");
+    const span = document.createElement("span");
+    const title = truncateNoteTitle(note.title || "New Note");
+    span.textContent = title;
+
+    button.appendChild(span);
+    button.title = title;
+
+    button.addEventListener("click", async () => {
+      recentMenu.style.display = "none";
+      await openNoteById(note.id, { preview: false });
     });
     recentMenu.appendChild(button);
   });
@@ -5850,8 +6174,10 @@ async function saveAsFile() {
 
     const activeClose = active.element.querySelector(".close");
     if (activeClose) activeClose.classList.remove("show-unsaved");
+    updatePinnedTabIcon(active);
     reloadButton(active, null, "remove");
     updateRecentFiles(filePath);
+    savePinnedTabsState();
     showMessage("file-saved");
     switchTab(active);
     return true;
@@ -5898,7 +6224,9 @@ async function saveFile() {
 
     const activeSaveClose = active.element.querySelector(".close");
     if (activeSaveClose) activeSaveClose.classList.remove("show-unsaved");
+    updatePinnedTabIcon(active);
     reloadButton(active, null, "remove");
+    savePinnedTabsState();
     showMessage("file-saved");
   } else {
     clearPendingSelfSave(active);
@@ -5925,6 +6253,7 @@ function syncTabSaveState(tab, content = null) {
     updateNoteTabTitle(tab, nextContent);
     const close = tab.element?.querySelector(".close");
     if (close) close.classList.remove("show-unsaved");
+    savePinnedTabsState();
     return tab.noteDirty;
   }
 
@@ -5938,6 +6267,8 @@ function syncTabSaveState(tab, content = null) {
   if (close) {
     close.classList.toggle("show-unsaved", hasChanges);
   }
+  updatePinnedTabIcon(tab);
+  savePinnedTabsState();
 
   return hasChanges;
 }
@@ -5990,8 +6321,6 @@ window.electronAPI.onWindowFocus((focused) => {
     processQueue();
   }
 });
-
-restoreAutosaveDrafts();
 
 // Tab context menu handler
 document.addEventListener("contextmenu", async (e) => {
@@ -6064,18 +6393,23 @@ document.addEventListener("contextmenu", async (e) => {
 
 // update copy & open path button based on path existance
 function updateTabContextMenuState(menu, tab) {
+  if (!menu) return;
   const copyPathBtn = menu.querySelector('[data-action="copyPath"]');
   const openPathBtn = menu.querySelector('[data-action="openPath"]');
   const openInNewWindowBtn = menu.querySelector('[data-action="openInNewWindow"]');
   const keepOpenBtn = menu.querySelector('[data-action="keepOpen"]');
+  const togglePinBtn = menu.querySelector('[data-action="togglePin"]');
 
   const hasPath = tab && tab.path;
-  const isWarn = tab.isWarned;
+  const isWarn = Boolean(tab?.isWarned);
 
   if (copyPathBtn) copyPathBtn.classList.toggle("disabled", !hasPath || isWarn);
   if (openPathBtn) openPathBtn.classList.toggle("disabled", !hasPath || isWarn);
-  if (openInNewWindowBtn) openInNewWindowBtn.classList.toggle("disabled", isWarn || tabData.length === 1);
+  if (openInNewWindowBtn)
+    openInNewWindowBtn.classList.toggle("disabled", isWarn || tab?.isPinned || tabData.length === 1);
   if (keepOpenBtn) keepOpenBtn.classList.toggle("disabled", !tab?.isNotePreview);
+  if (togglePinBtn)
+    togglePinBtn.querySelector(".label").textContent = i18next.t(tab?.isPinned ? "tabMenu.unpin" : "tabMenu.pin");
 }
 
 // Close multiple tabs one by one (close others, close to the right & close saved)
@@ -6085,6 +6419,7 @@ async function closeTabsSequentially(tabsToClose) {
   for (const tabToClose of tabsToClose) {
     // Check if tab still exists (might have been closed already)
     if (tabData.includes(tabToClose)) {
+      if (tabToClose.isPinned) continue;
       const closed = await attemptCloseTab(tabToClose);
       // If user cancelled, stop the process
       if (closed === "cancelled") {
@@ -6110,7 +6445,7 @@ tabContextMenu.addEventListener("click", async (e) => {
       break;
 
     case "closeOthers":
-      const otherTabs = tabData.filter((t) => t !== targetTab);
+      const otherTabs = tabData.filter((t) => t !== targetTab && !t.isPinned);
       if (otherTabs.length > 0) {
         await closeTabsSequentially(otherTabs);
       }
@@ -6118,14 +6453,14 @@ tabContextMenu.addEventListener("click", async (e) => {
 
     case "closeToRight":
       const rightClickedIndex = tabData.indexOf(targetTab);
-      const tabsToRight = tabData.slice(rightClickedIndex + 1);
+      const tabsToRight = tabData.slice(rightClickedIndex + 1).filter((tab) => !tab.isPinned);
       if (tabsToRight.length > 0) {
         await closeTabsSequentially(tabsToRight);
       }
       break;
 
     case "closeSaved":
-      const savedTabs = tabData.filter((t) => t.isFileSaved);
+      const savedTabs = tabData.filter((t) => t.isFileSaved && !t.isPinned);
       if (savedTabs.length > 0) {
         await closeTabsSequentially(savedTabs);
       }
@@ -6156,11 +6491,15 @@ tabContextMenu.addEventListener("click", async (e) => {
       break;
 
     case "openInNewWindow":
-      await openTabInNewWindow(targetTab);
+      if (!targetTab.isPinned) await openTabInNewWindow(targetTab);
       break;
 
     case "keepOpen":
       keepOpenNoteTab(targetTab);
+      break;
+
+    case "togglePin":
+      toggleTabPinned(targetTab);
       break;
   }
 });
@@ -6553,6 +6892,12 @@ window.addEventListener("keydown", async (e) => {
     e.preventDefault();
     const data = currentTab;
     if (!data) return;
+    if (data.isPinned) {
+      const currentIndex = tabData.indexOf(data);
+      const nextTab = tabData[(currentIndex + 1) % tabData.length];
+      if (nextTab) switchTab(nextTab);
+      return;
+    }
     await attemptCloseTab(data);
   }
 

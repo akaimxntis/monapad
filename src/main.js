@@ -22,6 +22,7 @@ const gotTheLock = app.requestSingleInstanceLock();
 let mainWindow = null;
 let filePathToOpen = null;
 let cursorWindow = null;
+let lastCursorWindowBounds = null;
 let kuromojiTokenizer = null;
 let kuromojiInitPromise = null;
 let mobileShareServer = null;
@@ -210,6 +211,10 @@ ipcMain.handle("get-app-version", () => {
   };
 });
 
+ipcMain.handle("get-app-session-id", () => {
+  return String(process.pid);
+});
+
 // theme folder
 ipcMain.handle("get-custom-themes", async () => {
   try {
@@ -344,6 +349,7 @@ ipcMain.handle("window:getMyBounds", (event) => {
 // small window when dragging tab outside toolbar
 ipcMain.on("createCursorWindow", () => {
   if (cursorWindow) return;
+  lastCursorWindowBounds = null;
 
   cursorWindow = new BrowserWindow({
     width: 23,
@@ -368,13 +374,18 @@ ipcMain.on("createCursorWindow", () => {
 });
 ipcMain.on("moveCursorWindow", (e, pos) => {
   if (!cursorWindow) return;
-  cursorWindow.setBounds({ x: pos.x + 12, y: pos.y + 12, width: 23, height: 23 });
+  const nextBounds = { x: pos.x + 12, y: pos.y + 12, width: 23, height: 23 };
+  if (!lastCursorWindowBounds || lastCursorWindowBounds.x !== nextBounds.x || lastCursorWindowBounds.y !== nextBounds.y) {
+    cursorWindow.setBounds(nextBounds);
+    lastCursorWindowBounds = nextBounds;
+  }
   if (!cursorWindow.isVisible()) cursorWindow.showInactive();
 });
 ipcMain.on("destroyCursorWindow", () => {
   if (cursorWindow) {
     cursorWindow.close();
     cursorWindow = null;
+    lastCursorWindowBounds = null;
   }
 });
 ipcMain.on("setCursorWindowState", (event, state) => {

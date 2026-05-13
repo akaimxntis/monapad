@@ -83,7 +83,9 @@
     "openPath": "Pfad öffnen",
     "reopenClosedTab": "Geschlossenen Tab wieder öffnen",
     "openInNewWindow": "In neuem Fenster öffnen",
-    "keepOpen": "Geöffnet lassen"
+    "keepOpen": "Geöffnet lassen",
+    "pin": "Anheften",
+    "unpin": "Lösen"
   },
   "settings": {
     "font": "Schriftart",

@@ -646,6 +646,9 @@
       body.note-external-dragging #toolbar {
         pointer-events: none;
       }
+      body.tab-dragging #notes-list {
+        pointer-events: none;
+      }
       /* tab with reload button */
       .tab.has-reload-button {
         padding-left: 5px;
@@ -674,11 +677,46 @@
       .tab .close .close-svg:hover {
         background: var(--color3);
       }
+      .tab.pinned .close .pin-svg {
+        display: flex;
+        line-height: 0;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        margin-right: -5px;
+        border-radius: 5px;
+      }
+      .tab.pinned .close .pin-svg:hover {
+        background: var(--color3);
+      }
+      .tab.pinned .close .pin-svg svg {
+        width: 17px;
+        height: 17px;
+      }
+      .tab.pinned .close .pin-svg svg path,
+      .tab.pinned .close .pin-svg svg circle {
+        stroke: var(--editorText);
+      }
+      .tab.pinned .close .pin-svg svg circle {
+        fill: var(--editorText);
+      }
+      .tab.pinned:not(.active):not(:hover) .close .pin-svg svg path,
+      .tab.pinned:not(.active):not(:hover) .close .pin-svg svg circle {
+        stroke: var(--grayOut);
+      }
+      .tab.pinned:not(.active):not(:hover) .close .pin-svg svg circle {
+        fill: var(--grayOut);
+      }
       #tabs:not(.compact) .tab:hover .close .close-svg,
       .tab.active .close .close-svg,
       #tabs:not(.compact) .tab:hover .close.show-unsaved .close-svg,
       #tabs.compact .tab.active:hover .close .close-svg {
         display: flex;
+      }
+      .tab.pinned .close .close-svg,
+      .tab.pinned .close .unsaved-dot {
+        display: none !important;
       }
       .tab .close.show-unsaved .close-svg {
         display: none;
@@ -2098,6 +2136,9 @@
         <div class="hr"></div>
         <button data-action="keepOpen" class="disabled">
           <span class="label">Keep Open</span>
+        </button>
+        <button data-action="togglePin">
+          <span class="label">Pin</span>
         </button>
         <div class="hr"></div>
         <button data-action="reopenClosedTab" class="disabled">

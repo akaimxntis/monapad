@@ -83,7 +83,9 @@
     "openPath": "パスを開く",
     "reopenClosedTab": "閉じたタブを開く",
     "openInNewWindow": "新規ウィンドウで開く",
-    "keepOpen": "開いたままにする"
+    "keepOpen": "開いたままにする",
+    "pin": "ピン留め",
+    "unpin": "ピン留めを解除"
   },
   "settings": {
     "font": "フォント",
