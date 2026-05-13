@@ -118,5 +118,17 @@
     "website": "Webseite",
     "creator": "Ersteller",
     "disclaimer": "Haftungsausschluss"
+  },
+  "notePanel": {
+    "search": "Suchen",
+    "newNote": "Neue Notiz",
+    "closePanel": "Notizen schließen",
+    "copyText": "Text kopieren",
+    "duplicate": "Duplizieren",
+    "convertToUntitled": "In unbenannt umwandeln",
+    "convertToFile": "In Datei umwandeln",
+    "delete": "Löschen",
+    "pinNote": "Notiz anheften",
+    "unpinNote": "Anheftung lösen"
   }
 }

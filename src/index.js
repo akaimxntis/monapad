@@ -193,8 +193,8 @@ window.electronAPI.onAssignWindowId((id) => {
   resolveWindowIdReady?.(id);
 });
 
-window.electronAPI.onShowExternalDropIndicator(({ dropScreenX, dropScreenY }) => {
-  showExternalDropIndicator(dropScreenX, dropScreenY);
+window.electronAPI.onShowExternalDropIndicator(({ dropScreenX, dropScreenY, tabInfo }) => {
+  showExternalDropIndicator(dropScreenX, dropScreenY, getExistingTabForPayload(tabInfo)?.element || null);
 });
 window.electronAPI.onHideExternalDropIndicator(() => {
   hideDropIndicator();
@@ -219,38 +219,76 @@ window.electronAPI.onOpenFile(async (filePath) => {
   }
 });
 
-function getTabInsertIndexByScreenX(screenX) {
-  if (typeof screenX !== "number") return null;
-
-  const clientX = screenX - window.screenX;
-  const tabElements = Array.from(tabs.querySelectorAll(".tab"));
-  if (!tabElements.length) return 0;
+function getTabDropPlacementByClientX(clientX, excludeTab = null) {
+  const tabElements = Array.from(tabs.querySelectorAll(".tab")).filter((tab) => tab !== excludeTab);
+  const tabsRect = tabs.getBoundingClientRect();
+  if (!tabElements.length) return { index: 0, left: 0, referenceTab: null };
 
   const rects = tabElements.map((tab) => tab.getBoundingClientRect());
   const firstRect = rects[0];
   const lastRect = rects[rects.length - 1];
 
-  if (clientX < firstRect.left) return 0;
-  if (clientX > lastRect.right) return tabElements.length;
+  if (clientX < firstRect.left) {
+    return { index: 0, left: Math.max(0, firstRect.left - tabsRect.left), referenceTab: tabElements[0] };
+  }
+  if (clientX > lastRect.right) {
+    return { index: tabElements.length, left: Math.max(0, lastRect.right - tabsRect.left), referenceTab: null };
+  }
 
   for (let i = 0; i < rects.length; i++) {
     const rect = rects[i];
     if (clientX >= rect.left && clientX <= rect.right) {
-      return clientX <= rect.left + rect.width / 2 ? i : i + 1;
+      if (clientX <= rect.left + rect.width / 2) {
+        return { index: i, left: Math.max(0, rect.left - tabsRect.left), referenceTab: tabElements[i] };
+      }
+      return { index: i + 1, left: Math.max(0, rect.right - tabsRect.left), referenceTab: tabElements[i + 1] || null };
     }
     const nextRect = rects[i + 1];
     if (nextRect && clientX < nextRect.left) {
-      return i + 1;
+      return { index: i + 1, left: Math.max(0, rect.right - tabsRect.left), referenceTab: tabElements[i + 1] };
     }
   }
 
-  return tabElements.length;
+  return { index: tabElements.length, left: Math.max(0, tabsRect.width), referenceTab: null };
+}
+
+function getTabInsertIndexByScreenX(screenX, excludeTab = null) {
+  if (typeof screenX !== "number") return null;
+  return getTabDropPlacementByClientX(screenX - window.screenX, excludeTab).index;
+}
+
+function getExistingTabForPayload(payload) {
+  if (!payload) return null;
+  if (payload.isNote && payload.noteId) {
+    return tabData.find((tab) => tab.isNote && tab.noteId === payload.noteId) || null;
+  }
+  if (payload.path) {
+    return tabData.find((tab) => tab.path === payload.path) || null;
+  }
+  return null;
 }
 
 // receive data on open in new window
 window.electronAPI.onLoadTabData(async (receivedTabData) => {
   hideDropIndicator();
   const payload = receivedTabData.tabInfo || receivedTabData;
+  const existingTab = getExistingTabForPayload(payload);
+  const placement =
+    typeof receivedTabData.dropScreenX === "number"
+      ? getTabDropPlacementByClientX(receivedTabData.dropScreenX - window.screenX, existingTab?.element || null)
+      : { index: null, referenceTab: null };
+  const insertIndex = placement.index;
+
+  if (payload.isNote) {
+    await createNoteTabFromPayload(payload, insertIndex, placement);
+    return;
+  }
+
+  if (existingTab) {
+    moveTabToDropPlacement(existingTab, placement);
+    switchTab(existingTab);
+    return;
+  }
 
   // remove existing initial tab
   if (tabData.length === 1 && !tabData[0].content.trim() && !tabData[0].path) {
@@ -260,7 +298,6 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
   }
 
   // create new tab
-  const insertIndex = getTabInsertIndexByScreenX(receivedTabData.dropScreenX);
   const newTabData = createTab(payload.name, payload.content, payload.path, insertIndex);
 
   // restore tab data
@@ -396,6 +433,21 @@ function updateMenuLabels() {
     i18next.t("tabMenu.reopenClosedTab");
   document.querySelector('button[data-action="openInNewWindow"] .label').textContent =
     i18next.t("tabMenu.openInNewWindow");
+
+  // notes panel
+  const notesSearch = document.getElementById("notes-search");
+  if (notesSearch) notesSearch.placeholder = i18next.t("notePanel.search");
+  if (notesAddButton) notesAddButton.setAttribute("aria-label", i18next.t("notePanel.newNote"));
+  if (notesPanelClose) notesPanelClose.setAttribute("aria-label", i18next.t("notePanel.closePanel"));
+  document.querySelector('#note-context-menu button[data-action="copyText"]').textContent =
+    i18next.t("notePanel.copyText");
+  document.querySelector('#note-context-menu button[data-action="duplicate"]').textContent =
+    i18next.t("notePanel.duplicate");
+  document.querySelector('#note-context-menu button[data-action="convertToUntitled"]').textContent =
+    i18next.t("notePanel.convertToUntitled");
+  document.querySelector('#note-context-menu button[data-action="convertToFile"]').textContent =
+    i18next.t("notePanel.convertToFile");
+  document.querySelector('#note-context-menu button[data-action="delete"]').textContent = i18next.t("notePanel.delete");
 
   // settings
   document.querySelector("#settings-menu .font .h1").textContent = i18next.t("settings.font");
@@ -1457,12 +1509,20 @@ function getTabAutosaveKey(tab) {
   return tab.draftId ? `draft:${tab.draftId}` : null;
 }
 
+const NOTE_TITLE_MAX_LENGTH = 100;
+
+function truncateNoteTitle(title) {
+  const value = String(title || "").trim();
+  if (value.length <= NOTE_TITLE_MAX_LENGTH) return value;
+  return `${value.slice(0, NOTE_TITLE_MAX_LENGTH)}...`;
+}
+
 function getNoteTitleFromContent(content) {
   const firstTextLine = String(content || "")
     .split(/\r\n|\r|\n/)
     .map((line) => line.trim())
     .find(Boolean);
-  return firstTextLine || "New Note";
+  return truncateNoteTitle(firstTextLine || "New Note");
 }
 
 function formatNoteUpdatedAt(updatedAt) {
@@ -1476,7 +1536,7 @@ function formatNoteUpdatedAt(updatedAt) {
 
 function updateNoteTabTitle(tab, content = null) {
   if (!tab?.isNote) return;
-  const title = getNoteTitleFromContent(content ?? tab.model?.getValue() ?? tab.content ?? "");
+  const title = truncateNoteTitle(getNoteTitleFromContent(content ?? tab.model?.getValue() ?? tab.content ?? ""));
   tab.name = title;
   tab.noteTitle = title;
   const nameSpan = tab.element?.querySelector(".name");
@@ -1549,7 +1609,7 @@ function getReusableEmptyUntitledTab() {
 }
 
 function applyNoteDataToTab(tab, note, content) {
-  const title = note?.meta?.title || getNoteTitleFromContent(content);
+  const title = truncateNoteTitle(note?.meta?.title || getNoteTitleFromContent(content));
   tab.isNote = true;
   tab.noteId = note.id;
   tab.notePath = note.path;
@@ -2403,11 +2463,11 @@ function setNotesPanelOpen(open) {
   notesPanel?.setAttribute("aria-hidden", open ? "false" : "true");
   updateEditorLeftMargin();
   if (open) {
+    closeContextMenus({ focus: false });
     renderNotesList();
     menu.style.display = "none";
     themeMenu.style.display = "none";
     recentMenu.style.display = "none";
-    settingsMenu.style.display = "none";
     setMenuButtonsPointerEvents("auto");
   }
   setTimeout(() => monacoEditor?.layout(), 190);
@@ -2435,9 +2495,7 @@ function toggleMainMenuFromButton(e) {
     menuButtonDragOpenedPanel = false;
     return;
   }
-  customContextMenu.style.display = "none";
-  tabContextMenu.style.display = "none";
-  rightClickedTab = null;
+  closeContextMenus({ focus: false });
   const isOpen = menu.style.display === "block";
   menu.style.display = isOpen ? "none" : "block";
   setMenuButtonsPointerEvents(isOpen ? "auto" : "none");
@@ -2498,7 +2556,10 @@ window.addEventListener("mouseup", () => {
 // close menu & context menu on outside click
 document.addEventListener("mousedown", (e) => {
   if (e.target.closest(".choices")) return;
-  if (e.target.closest("#menu-button, #notes-panel-menu-button")) return;
+  if (e.target.closest("#menu-button, #notes-panel-menu-button")) {
+    closeContextMenus({ focus: false });
+    return;
+  }
   if (!customContextMenu.contains(e.target)) {
     customContextMenu.style.display = "none";
   }
@@ -3216,7 +3277,7 @@ function updateStatusBar() {
     const updated = formatNoteUpdatedAt(currentTab.noteUpdatedAt);
     const noteStatus = updated ? `${updated} | Note: ${currentTab.name}` : `Note: ${currentTab.name}`;
     statusLeft.textContent = noteStatus;
-    statusLeft.title = currentTab.notePath || noteStatus;
+    statusLeft.title = currentTab.name;
   } else {
     statusLeft.textContent = currentFilePath;
     statusLeft.title = currentFilePath;
@@ -3231,39 +3292,15 @@ function updateStatusBar() {
 }
 
 // drag & drop indicator when dragging tab to another window
-function showDropIndicator(clientX) {
+function showDropIndicator(clientX, excludeTab = null) {
   if (!dropIndicator) return;
   const tabsRect = tabs.getBoundingClientRect();
-  const tabElements = Array.from(tabs.children).filter((el) => el.classList.contains("tab") && el !== draggingTab);
-  if (!tabElements.length) {
-    dropIndicator.style.left = "0px";
-    dropIndicator.style.display = "block";
-    return;
-  }
-
-  const relativeX = clientX - tabsRect.left;
-  let left = 0;
-
-  for (let i = 0; i < tabElements.length; i++) {
-    const rect = tabElements[i].getBoundingClientRect();
-    const targetLeft = rect.left - tabsRect.left;
-    const targetRight = rect.right - tabsRect.left;
-    const midpoint = targetLeft + rect.width / 2;
-
-    if (relativeX <= midpoint) {
-      left = targetLeft;
-      break;
-    }
-
-    if (i === tabElements.length - 1 || relativeX <= tabElements[i + 1].getBoundingClientRect().left - tabsRect.left) {
-      left = targetRight;
-      break;
-    }
-  }
-
+  const effectiveExcludeTab = excludeTab || draggingTab;
+  let { left } = getTabDropPlacementByClientX(clientX, effectiveExcludeTab);
   left = Math.max(0, Math.min(left, tabsRect.width));
   const indicatorWidth = dropIndicator.offsetWidth || 2;
-  const centeredLeft = left - indicatorWidth / 2;
+  const notesPanelFirstOffset = document.body.classList.contains("notes-panel-open") && left === 0 ? 2 : 0;
+  const centeredLeft = left - indicatorWidth / 2 + notesPanelFirstOffset;
   dropIndicator.style.left = `${centeredLeft}px`;
   dropIndicator.style.display = "block";
 }
@@ -3273,7 +3310,7 @@ function hideDropIndicator() {
   dropIndicator.style.display = "none";
 }
 
-function showExternalDropIndicator(screenX, screenY) {
+function showExternalDropIndicator(screenX, screenY, excludeTab = null) {
   if (!dropIndicator) return;
   if (typeof screenX !== "number" || typeof screenY !== "number") {
     hideDropIndicator();
@@ -3284,16 +3321,16 @@ function showExternalDropIndicator(screenX, screenY) {
   const tabsRect = tabs.getBoundingClientRect();
 
   if (localClientX <= tabsRect.left) {
-    showDropIndicator(tabsRect.left);
+    showDropIndicator(tabsRect.left, excludeTab);
     return;
   }
 
   if (localClientX >= tabsRect.right) {
-    showDropIndicator(tabsRect.right);
+    showDropIndicator(tabsRect.right, excludeTab);
     return;
   }
 
-  showDropIndicator(localClientX);
+  showDropIndicator(localClientX, excludeTab);
 }
 
 function resetExternalPreviewTargetWindow() {
@@ -3303,7 +3340,7 @@ function resetExternalPreviewTargetWindow() {
   }
 }
 
-function setExternalPreviewTargetWindow(targetWindowId, dropScreenX, dropScreenY) {
+function setExternalPreviewTargetWindow(targetWindowId, dropScreenX, dropScreenY, tabInfo = null) {
   if (externalPreviewTargetWindowId !== null && externalPreviewTargetWindowId !== targetWindowId) {
     window.electronAPI.clearPreviewTabDrop(externalPreviewTargetWindowId);
     externalPreviewTargetWindowId = null;
@@ -3314,7 +3351,7 @@ function setExternalPreviewTargetWindow(targetWindowId, dropScreenX, dropScreenY
     if (dropScreenX !== lastPreviewX || dropScreenY !== lastPreviewY) {
       lastPreviewX = dropScreenX;
       lastPreviewY = dropScreenY;
-      window.electronAPI.previewTabDrop(targetWindowId, { dropScreenX, dropScreenY });
+      window.electronAPI.previewTabDrop(targetWindowId, { dropScreenX, dropScreenY, tabInfo });
     }
     return;
   }
@@ -3421,7 +3458,11 @@ function enableTabDragging(tab, data) {
           }
 
           if (state === "move") {
-            setExternalPreviewTargetWindow(targetWindowId, e.screenX, e.screenY);
+            setExternalPreviewTargetWindow(targetWindowId, e.screenX, e.screenY, {
+              isNote: draggingTabData.isNote,
+              noteId: draggingTabData.noteId,
+              path: draggingTabData.path,
+            });
           } else {
             setExternalPreviewTargetWindow(null);
           }
@@ -3569,6 +3610,12 @@ function enableTabDragging(tab, data) {
             name: releasedTabData.name,
             content: releasedTabData.model.getValue(),
             path: releasedTabData.path,
+            isNote: releasedTabData.isNote,
+            noteId: releasedTabData.noteId,
+            notePath: releasedTabData.notePath,
+            noteTitle: releasedTabData.noteTitle,
+            noteCreatedAt: releasedTabData.noteCreatedAt,
+            noteUpdatedAt: releasedTabData.noteUpdatedAt,
             isFileSaved: releasedTabData.isFileSaved,
             originalContent: releasedTabData.originalContent,
             fontSize: releasedTabData.fontSize,
@@ -4911,14 +4958,14 @@ async function renderNotesList() {
 
     const title = document.createElement("span");
     title.className = "note-list-title";
-    title.textContent = note.title || getNoteTitleFromContent("");
+    title.textContent = truncateNoteTitle(note.title || getNoteTitleFromContent(""));
     title.title = title.textContent;
 
     const pinButton = document.createElement("button");
     pinButton.className = "note-pin-button";
     pinButton.type = "button";
     pinButton.innerHTML = NOTE_PIN_ICON_SVG;
-    pinButton.setAttribute("aria-label", note.pinned ? "Unpin Note" : "Pin Note");
+    pinButton.setAttribute("aria-label", note.pinned ? i18next.t("notePanel.unpinNote") : i18next.t("notePanel.pinNote"));
     pinButton.addEventListener("click", async (e) => {
       e.stopPropagation();
       await window.electronAPI.updateNoteMeta({ noteId: note.id, pinned: !note.pinned });
@@ -5040,32 +5087,354 @@ async function convertNoteToFile(noteId) {
   return true;
 }
 
+async function getNoteTabPayload(noteId) {
+  const openTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
+  if (openTab) {
+    const content = openTab.model?.getValue() ?? openTab.content ?? "";
+    return {
+      name: openTab.name,
+      content,
+      path: null,
+      isNote: true,
+      noteId: openTab.noteId,
+      notePath: openTab.notePath,
+    noteTitle: truncateNoteTitle(openTab.noteTitle || openTab.name),
+      noteCreatedAt: openTab.noteCreatedAt,
+      noteUpdatedAt: openTab.noteUpdatedAt,
+      isFileSaved: true,
+      originalContent: content,
+      fontSize: openTab.fontSize,
+      wordWrap: openTab.wordWrap,
+      isMarkdown: false,
+      draftId: null,
+    };
+  }
+
+  const note = await window.electronAPI.readNote(noteId);
+  if (!note?.exists) return null;
+  const title = truncateNoteTitle(note.meta?.title || getNoteTitleFromContent(note.content));
+  return {
+    name: title,
+    content: note.content || "",
+    path: null,
+    isNote: true,
+    noteId: note.id,
+    notePath: note.path,
+    noteTitle: title,
+    noteCreatedAt: note.meta?.createdAt,
+    noteUpdatedAt: note.meta?.updatedAt,
+    isFileSaved: true,
+    originalContent: note.content || "",
+    fontSize: persistentFontSize,
+    wordWrap: true,
+    isMarkdown: false,
+    draftId: null,
+  };
+}
+
+async function createNoteTabFromPayload(payload, insertIndex = null, placement = null) {
+  if (!payload?.noteId) return null;
+  const existingTab = tabData.find((tab) => tab.isNote && tab.noteId === payload.noteId);
+  if (existingTab) {
+    moveTabToDropPlacement(existingTab, placement || { index: insertIndex, referenceTab: null });
+    switchTab(existingTab);
+    return existingTab;
+  }
+
+  const note = {
+    success: true,
+    id: payload.noteId,
+    path: payload.notePath,
+    content: payload.content,
+    meta: {
+      title: truncateNoteTitle(payload.noteTitle || payload.name),
+      createdAt: payload.noteCreatedAt,
+      updatedAt: payload.noteUpdatedAt,
+    },
+  };
+  const tab = await createNoteTab(payload.content || "", insertIndex, note);
+  if (tab) switchTab(tab);
+  return tab;
+}
+
+function moveTabToDropPlacement(tab, placement = null) {
+  if (!tab || !placement || placement.index === null) return tab;
+  const oldIndex = tabData.indexOf(tab);
+  if (oldIndex === -1) return tab;
+
+  tabData.splice(oldIndex, 1);
+  if (tab.element.parentElement === tabs) tabs.removeChild(tab.element);
+
+  const referenceTabData = placement.referenceTab
+    ? tabData.find((candidate) => candidate.element === placement.referenceTab)
+    : null;
+  const finalIndex = referenceTabData
+    ? tabData.indexOf(referenceTabData)
+    : Math.max(0, Math.min(placement.index, tabData.length));
+
+  tabData.splice(finalIndex, 0, tab);
+  const reference = referenceTabData?.element || tabs.children[finalIndex];
+  if (reference && reference !== tab.element) tabs.insertBefore(tab.element, reference);
+  else tabs.appendChild(tab.element);
+
+  document.querySelectorAll(".tab").forEach((tabElement) => tabElement.classList.remove("prev-active"));
+  const prev = tab.element.previousElementSibling;
+  if (prev && prev.classList.contains("tab") && tab.element.classList.contains("active")) {
+    prev.classList.add("prev-active");
+  }
+  scheduleAllUnsavedTabAutosaves();
+  return tab;
+}
+
+function getOpenNoteTabById(noteId) {
+  return tabData.find((tab) => tab.isNote && tab.noteId === noteId) || null;
+}
+
 let noteDragState = null;
 let suppressNoteClick = false;
 
 function beginNoteListDrag(e, item) {
   if (e.button !== 0 || e.target.closest(".note-pin-button")) return;
+  startNotePanelDragFromItem(item, e);
+}
+
+function startNotePanelDragFromItem(item, e, options = {}) {
   noteDragState = {
     item,
+    noteId: item.dataset.noteId,
     startY: e.clientY,
     currentY: 0,
     dragIndex: [...notesList.querySelectorAll(".note-list-item")].indexOf(item),
+    originalOrder: [...notesList.querySelectorAll(".note-list-item")].map((node) => node.dataset.noteId),
     dragging: false,
+    mode: "panel",
+    payloadPromise: getNoteTabPayload(item.dataset.noteId),
+    externalStarted: false,
+    transferringToTabDrag: false,
   };
+  if (options.forceDragging) {
+    noteDragState.dragging = true;
+    applyNoteListDragItemStyle(item);
+    noteDragState.dragIndex = moveNoteListItemToCursor(item, e.clientY);
+    positionNoteListItemAtCursor(noteDragState, e.clientY);
+  }
+}
+
+function isPointInRect(x, y, rect) {
+  return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+}
+
+function isPointInNotePanel(e) {
+  return isPointInRect(e.clientX, e.clientY, notesPanel.getBoundingClientRect());
+}
+
+function resetNoteListDragItem(item) {
+  if (!item) return;
+  item.classList.remove("dragging");
+  item.style.transition = "";
+  item.style.transform = "";
+  item.style.position = "";
+  item.style.zIndex = "";
+  item.style.pointerEvents = "";
+}
+
+function applyNoteListDragItemStyle(item) {
+  item.classList.add("dragging");
+  item.style.transition = "none";
+  item.style.position = "relative";
+  item.style.zIndex = "2";
+  item.style.pointerEvents = "none";
+}
+
+function restoreNoteListOrder(state) {
+  if (!state?.originalOrder?.length) return;
+  const nodes = new Map([...notesList.querySelectorAll(".note-list-item")].map((node) => [node.dataset.noteId, node]));
+  for (const noteId of state.originalOrder) {
+    const node = nodes.get(noteId);
+    if (node) notesList.appendChild(node);
+  }
+}
+
+function cleanupNoteExternalDrag() {
+  document.body.classList.remove("note-external-dragging");
+  hideDropIndicator();
+  resetExternalPreviewTargetWindow();
+  if (overlayWindowVisible) {
+    overlayWindowVisible = false;
+    window.electronAPI.destroyCursorWindow();
+  }
+  windowBoundsCache = null;
+  dragStartClientPos = null;
+  externalCancelDragging = null;
+}
+
+function moveNoteListItemToCursor(item, clientY) {
+  const siblings = [...notesList.querySelectorAll(".note-list-item")].filter((node) => node !== item);
+  const before = siblings.find((node) => {
+    const rect = node.getBoundingClientRect();
+    return clientY < rect.top + rect.height / 2;
+  });
+  if (before) notesList.insertBefore(item, before);
+  else notesList.appendChild(item);
+  return [...notesList.querySelectorAll(".note-list-item")].indexOf(item);
+}
+
+function positionNoteListItemAtCursor(state, clientY) {
+  if (!state?.item) return;
+  const rect = state.item.getBoundingClientRect();
+  state.currentY = clientY - (rect.top + rect.height / 2);
+  state.startY = clientY - state.currentY;
+  state.item.style.transform = `translateY(${state.currentY}px)`;
+}
+
+async function startNoteExternalDrag(e) {
+  if (!noteDragState || noteDragState.externalStarted) return;
+  const state = noteDragState;
+  state.externalStarted = true;
+  state.mode = "external";
+  restoreNoteListOrder(state);
+  resetNoteListDragItem(state.item);
+  windowBoundsCache = await window.electronAPI.getMyBounds();
+  if (noteDragState !== state) return;
+  dragStartClientPos = { x: e.clientX, y: e.clientY };
+  externalCancelDragging = cancelNoteDragByShortcut;
+  overlayWindowVisible = true;
+  document.body.classList.add("note-external-dragging");
+  window.electronAPI.createCursorWindow();
+  updateNoteExternalDragPreview(e);
+}
+
+function isScreenPointInMyWindow(e) {
+  if (!windowBoundsCache) return false;
+  return (
+    e.screenX >= windowBoundsCache.x &&
+    e.screenX <= windowBoundsCache.x + windowBoundsCache.width &&
+    e.screenY >= windowBoundsCache.y &&
+    e.screenY <= windowBoundsCache.y + windowBoundsCache.height
+  );
+}
+
+function updateNoteExternalDragPreview(e) {
+  if (!noteDragState?.externalStarted) return;
+  window.electronAPI.moveCursorWindow(e.screenX, e.screenY);
+  const shouldCheckTargetWindow = windowBoundsCache && performance.now() - lastWindowCheck > 100;
+  if (shouldCheckTargetWindow) lastWindowCheck = performance.now();
+
+  if (isScreenPointInMyWindow(e)) {
+    resetExternalPreviewTargetWindow();
+    window.electronAPI.setCursorWindowState("move");
+    showDropIndicator(e.clientX, getOpenNoteTabById(noteDragState.noteId)?.element || null);
+    return;
+  }
+
+  if (!shouldCheckTargetWindow) return;
+
+  window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY }).then(async (targetWindowId) => {
+    if (!noteDragState?.externalStarted) return;
+    const isInMyWindow = isScreenPointInMyWindow(e);
+    let isTargetMinimized = false;
+    if (targetWindowId) {
+      isTargetMinimized = await window.electronAPI.isWindowMinimized(targetWindowId);
+    }
+
+    if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow && !isTargetMinimized) {
+      window.electronAPI.setCursorWindowState("move");
+      hideDropIndicator();
+      setExternalPreviewTargetWindow(targetWindowId, e.screenX, e.screenY, {
+        isNote: true,
+        noteId: noteDragState.noteId,
+      });
+      return;
+    }
+
+    resetExternalPreviewTargetWindow();
+    window.electronAPI.setCursorWindowState("new");
+    hideDropIndicator();
+  });
+}
+
+function resumeNotePanelDrag(e) {
+  if (!noteDragState) return;
+  const state = noteDragState;
+  cleanupNoteExternalDrag();
+  state.mode = "panel";
+  state.externalStarted = false;
+  state.transferringToTabDrag = false;
+  state.dragging = true;
+  applyNoteListDragItemStyle(state.item);
+  state.dragIndex = moveNoteListItemToCursor(state.item, e.clientY);
+  positionNoteListItemAtCursor(state, e.clientY);
+}
+
+async function finishNoteExternalDrag(e) {
+  const state = noteDragState;
+  if (!state) return;
+  const payload = await state.payloadPromise;
+  const isInMyWindow = isScreenPointInMyWindow(e);
+  const position = dragStartClientPos
+    ? {
+        x: e.screenX - dragStartClientPos.x,
+        y: e.screenY - dragStartClientPos.y,
+      }
+    : { x: e.screenX, y: e.screenY };
+
+  cleanupNoteExternalDrag();
+  noteDragState = null;
+  if (!payload) return;
+
+  const targetWindowId = await window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY });
+  if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow) {
+    await window.electronAPI.sendTabToWindow(targetWindowId, {
+      tabInfo: payload,
+      dropScreenX: e.screenX,
+      dropScreenY: e.screenY,
+    });
+    await window.electronAPI.focusWindow(targetWindowId);
+    return;
+  }
+
+  if (isInMyWindow) {
+    const existingNoteTab = getOpenNoteTabById(state.noteId);
+    const placement = getTabDropPlacementByClientX(e.clientX, existingNoteTab?.element || null);
+    const insertIndex = placement.index;
+    await createNoteTabFromPayload(payload, insertIndex, placement);
+    return;
+  }
+
+  await window.electronAPI.createNewWindowWithTab(payload, position);
+}
+
+function cancelNoteDragByShortcut() {
+  if (!noteDragState) return;
+  const state = noteDragState;
+  restoreNoteListOrder(state);
+  resetNoteListDragItem(state.item);
+  cleanupNoteExternalDrag();
+  noteDragState = null;
 }
 
 window.addEventListener("mousemove", (e) => {
   if (!noteDragState) return;
   const { item, startY } = noteDragState;
+  if (noteDragState.mode === "external") {
+    if (isPointInNotePanel(e)) {
+      resumeNotePanelDrag(e);
+      return;
+    }
+    updateNoteExternalDragPreview(e);
+    return;
+  }
+
   if (!noteDragState.dragging) {
     if (Math.abs(e.clientY - startY) < 5) return;
     noteDragState.dragging = true;
     noteDragState.currentY = 0;
-    item.classList.add("dragging");
-    item.style.transition = "none";
-    item.style.position = "relative";
-    item.style.zIndex = "2";
-    item.style.pointerEvents = "none";
+    applyNoteListDragItemStyle(item);
+  }
+
+  if (!isPointInNotePanel(e)) {
+    startNoteExternalDrag(e);
+    return;
   }
 
   noteDragState.currentY = e.clientY - noteDragState.startY;
@@ -5104,9 +5473,13 @@ window.addEventListener("mousemove", (e) => {
   }
 });
 
-window.addEventListener("mouseup", async () => {
+window.addEventListener("mouseup", async (e) => {
   if (!noteDragState) return;
   const { item, dragging } = noteDragState;
+  if (noteDragState.mode === "external") {
+    await finishNoteExternalDrag(e);
+    return;
+  }
   noteDragState = null;
   if (!dragging) return;
   suppressNoteClick = true;
@@ -5203,7 +5576,7 @@ async function populateRecentMenu() {
   noteEntries.forEach((note) => {
     const button = document.createElement("button");
     const span = document.createElement("span");
-    const title = note.title || "New Note";
+    const title = truncateNoteTitle(note.title || "New Note");
     span.textContent = title;
 
     button.appendChild(span);
@@ -5834,7 +6207,7 @@ function isElementOpen(element) {
   return element?.style.display && element.style.display !== "none";
 }
 
-function closeContextMenus() {
+function closeContextMenus({ focus = true } = {}) {
   let closed = false;
 
   if (isElementOpen(customContextMenu)) {
@@ -5854,7 +6227,7 @@ function closeContextMenus() {
     closed = true;
   }
 
-  if (closed) monacoEditor?.focus();
+  if (closed && focus) monacoEditor?.focus();
   return closed;
 }
 
@@ -5904,7 +6277,7 @@ async function closeTopOverlayByEscape() {
 
 settingsButton.addEventListener("click", (e) => {
   e.stopPropagation();
-  setNotesPanelOpen(false);
+  closeContextMenus({ focus: false });
   settingsMenu.style.display = "block";
   menu.style.display = "none";
   setMenuButtonsPointerEvents("auto");

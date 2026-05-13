@@ -118,5 +118,17 @@
     "website": "官方网站",
     "creator": "创建者",
     "disclaimer": "免责声明"
+  },
+  "notePanel": {
+    "search": "搜索",
+    "newNote": "新建笔记",
+    "closePanel": "关闭笔记",
+    "copyText": "复制全文",
+    "duplicate": "复制",
+    "convertToUntitled": "转换为未命名",
+    "convertToFile": "转换为文件",
+    "delete": "删除",
+    "pinNote": "置顶笔记",
+    "unpinNote": "取消置顶"
   }
 }

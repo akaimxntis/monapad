@@ -84,6 +84,18 @@
     "reopenClosedTab": "Reopen Closed Tab",
     "openInNewWindow": "Open in New Window"
   },
+  "notePanel": {
+    "search": "Search",
+    "newNote": "New Note",
+    "closePanel": "Close Notes",
+    "copyText": "Copy Text",
+    "duplicate": "Duplicate",
+    "convertToUntitled": "Convert to Untitled",
+    "convertToFile": "Convert to File",
+    "delete": "Delete",
+    "pinNote": "Pin Note",
+    "unpinNote": "Unpin Note"
+  },
   "settings": {
     "font": "Font",
     "size": "Size",

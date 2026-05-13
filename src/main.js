@@ -315,6 +315,7 @@ ipcMain.on("tab:previewDrop", (event, payload) => {
     targetWin.webContents.send("show-external-drop-indicator", {
       dropScreenX: payload.dropScreenX,
       dropScreenY: payload.dropScreenY,
+      tabInfo: payload.tabInfo,
     });
   }
 });
@@ -861,19 +862,27 @@ function normalizeNotesOrder(notes) {
   return notes;
 }
 
+const NOTE_TITLE_MAX_LENGTH = 100;
+
+function truncateNoteTitle(title) {
+  const value = String(title || "").trim();
+  if (value.length <= NOTE_TITLE_MAX_LENGTH) return value;
+  return `${value.slice(0, NOTE_TITLE_MAX_LENGTH)}...`;
+}
+
 function getNoteTitleFromContent(content) {
   const firstTextLine = String(content || "")
     .split(/\r\n|\r|\n/)
     .map((line) => line.trim())
     .find(Boolean);
-  return firstTextLine || "New Note";
+  return truncateNoteTitle(firstTextLine || "New Note");
 }
 
 async function upsertNoteIndexEntry(noteId, content, extra = {}) {
   const notesDir = await ensureNotesDir();
   const index = await readNotesIndex();
   const now = Date.now();
-  const title = extra.title || getNoteTitleFromContent(content);
+  const title = truncateNoteTitle(extra.title || getNoteTitleFromContent(content));
   const contentBytes = Buffer.byteLength(typeof content === "string" ? content : "", "utf8");
   const existing = index.notes.find((note) => note.id === noteId);
   const maxOrder = index.notes.reduce((max, note) => Math.max(max, Number.isFinite(note.order) ? note.order : -1), -1);

@@ -118,5 +118,17 @@
     "website": "公式サイト",
     "creator": "開発者",
     "disclaimer": "免責事項"
+  },
+  "notePanel": {
+    "search": "検索",
+    "newNote": "新規ノート",
+    "closePanel": "ノートを閉じる",
+    "copyText": "全文コピー",
+    "duplicate": "複製",
+    "convertToUntitled": "無題に変換",
+    "convertToFile": "ファイルに変換",
+    "delete": "削除",
+    "pinNote": "ピン留め",
+    "unpinNote": "ピン留めを解除"
   }
 }

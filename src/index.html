@@ -643,6 +643,9 @@
         color: var(--grayOut);
         cursor: default;
       }
+      body.note-external-dragging #toolbar {
+        pointer-events: none;
+      }
       /* tab with reload button */
       .tab.has-reload-button {
         padding-left: 5px;
@@ -1262,6 +1265,8 @@
         cursor: pointer;
         padding: 0 10px;
         display: flex;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
       #custom-context-menu button:hover,
       #tab-context-menu button:hover,
@@ -1364,6 +1369,15 @@
       }
       #notes-panel-close:hover {
         background: var(--color3);
+      }
+      #notes-panel-drag-fill {
+        position: absolute;
+        top: var(--window-top-safe-area);
+        left: 40px;
+        right: 36px;
+        height: var(--toolbar-height);
+        -webkit-app-region: drag;
+        pointer-events: none;
       }
       #notes-panel-tools {
         display: flex;
@@ -1889,6 +1903,7 @@
             />
           </svg>
         </button>
+        <div id="notes-panel-drag-fill"></div>
         <button id="notes-panel-close" aria-label="Close Notes">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8.74 8.74" width="10" height="10">
             <line
