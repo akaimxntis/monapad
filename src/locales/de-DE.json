@@ -82,7 +82,8 @@
     "copyPath": "Pfad kopieren",
     "openPath": "Pfad öffnen",
     "reopenClosedTab": "Geschlossenen Tab wieder öffnen",
-    "openInNewWindow": "In neuem Fenster öffnen"
+    "openInNewWindow": "In neuem Fenster öffnen",
+    "keepOpen": "Geöffnet lassen"
   },
   "settings": {
     "font": "Schriftart",

@@ -82,7 +82,8 @@
     "copyPath": "Copy Path",
     "openPath": "Open Path",
     "reopenClosedTab": "Reopen Closed Tab",
-    "openInNewWindow": "Open in New Window"
+    "openInNewWindow": "Open in New Window",
+    "keepOpen": "Keep Open"
   },
   "notePanel": {
     "search": "Search",

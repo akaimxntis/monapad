@@ -433,6 +433,7 @@ function updateMenuLabels() {
     i18next.t("tabMenu.reopenClosedTab");
   document.querySelector('button[data-action="openInNewWindow"] .label').textContent =
     i18next.t("tabMenu.openInNewWindow");
+  document.querySelector('button[data-action="keepOpen"] .label').textContent = i18next.t("tabMenu.keepOpen");
 
   // notes panel
   const notesSearch = document.getElementById("notes-search");
@@ -1309,6 +1310,17 @@ monacoEditor.addAction({
   },
 });
 
+monacoEditor.addAction({
+  id: "monapad.keepOpenNotePreview",
+  label: "Keep Open",
+  keybindings: [monaco.KeyMod.chord(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, monaco.KeyCode.Enter)],
+  precondition: null,
+  keybindingContext: null,
+  run: function () {
+    keepOpenNoteTab(currentTab);
+  },
+});
+
 // heading shortcut
 function createToggleHeadingAction(level) {
   const id = `toggle-h${level}`;
@@ -1608,7 +1620,20 @@ function getReusableEmptyUntitledTab() {
   return content.trim() ? null : tab;
 }
 
-function applyNoteDataToTab(tab, note, content) {
+function setNoteTabPreview(tab, preview) {
+  if (!tab?.isNote) return;
+  tab.isNotePreview = Boolean(preview);
+  tab.element?.classList.toggle("preview", tab.isNotePreview);
+}
+
+function keepOpenNoteTab(tab = currentTab) {
+  if (!tab?.isNotePreview) return false;
+  setNoteTabPreview(tab, false);
+  if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+  return true;
+}
+
+function applyNoteDataToTab(tab, note, content, options = {}) {
   const title = truncateNoteTitle(note?.meta?.title || getNoteTitleFromContent(content));
   tab.isNote = true;
   tab.noteId = note.id;
@@ -1627,6 +1652,7 @@ function applyNoteDataToTab(tab, note, content) {
   tab.isMarkdown = false;
   tab._lastExternalContent = null;
   tab.element.classList.add("note");
+  setNoteTabPreview(tab, Boolean(options.preview));
   tab.element.querySelector(".name")?.classList.remove("warn");
   tab.element.querySelector(".close")?.classList.remove("show-unsaved");
   reloadButton(tab, null, "remove");
@@ -1899,6 +1925,7 @@ monacoEditor.onDidChangeModelContent(() => {
     return;
   }
 
+  if (active.isNotePreview) keepOpenNoteTab(active);
   syncTabSaveState(active, currentContent);
   scheduleTabAutosave(active, currentContent);
 
@@ -3604,6 +3631,7 @@ function enableTabDragging(tab, data) {
       .getWindowIdAt({ x: e.screenX, y: e.screenY })
       .then(async (targetWindowId) => {
         if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow) {
+          if (releasedTabData.isNotePreview) keepOpenNoteTab(releasedTabData);
           await writeTabAutosave(releasedTabData);
           // send tab to window on drop
           const tabInfo = {
@@ -3641,6 +3669,7 @@ function enableTabDragging(tab, data) {
           }
         } else if (isOutsideToolbar) {
           if (wasOnlyTab) return;
+          if (releasedTabData.isNotePreview) keepOpenNoteTab(releasedTabData);
           const position = dragStartClientPos
             ? {
                 x: e.screenX - dragStartClientPos.x,
@@ -3743,15 +3772,7 @@ function removeTabAndAdjustUI(targetTabData) {
   const isActive = targetTabData.element.classList.contains("active");
 
   if (!isActive) {
-    // Update prev-active tab if necessary
-    const currentActive = tabData.find((t) => t.element.classList.contains("active"));
-    if (currentActive) {
-      document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("prev-active"));
-      const prev = currentActive.element.previousElementSibling;
-      if (prev && prev.classList.contains("tab")) {
-        prev.classList.add("prev-active");
-      }
-    }
+    updateTabAdjacencyClasses();
     return;
   }
 
@@ -3918,7 +3939,7 @@ function createTab(name, content = "", path = null, insertIndex = null) {
   return data;
 }
 
-async function createNoteTab(content = "", insertIndex = null, existingNote = null) {
+async function createNoteTab(content = "", insertIndex = null, existingNote = null, options = {}) {
   const title = existingNote?.meta?.title || getNoteTitleFromContent(content);
   let note = existingNote;
 
@@ -3938,7 +3959,7 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
     if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
     reusableTab._ignoreUnsavedCheck = true;
     reusableTab.model.setValue(noteContent);
-    applyNoteDataToTab(reusableTab, note, noteContent);
+    applyNoteDataToTab(reusableTab, note, noteContent, options);
     if (reusableTab === currentTab) {
       currentFilePath = `Note: ${reusableTab.name}`;
       updateStatusBar();
@@ -3948,13 +3969,13 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
   }
 
   const data = createTab(title, noteContent, null, insertIndex);
-  applyNoteDataToTab(data, note, noteContent);
+  applyNoteDataToTab(data, note, noteContent, options);
   renderNotesList();
   return data;
 }
 
 async function createNewNote() {
-  const data = await createNoteTab("");
+  const data = await createNoteTab("", null, null, { preview: false });
   if (data) switchTab(data);
 }
 
@@ -4046,15 +4067,7 @@ async function attemptCloseTab(data) {
       } else {
         const currentActive = tabData.find((t) => t.element.classList.contains("active"));
         if (currentActive) {
-          document.querySelectorAll(".tab").forEach((tab) => {
-            tab.classList.remove("prev-active");
-          });
-
-          const prev = currentActive.element.previousElementSibling;
-          if (prev && prev.classList.contains("tab")) {
-            prev.classList.add("prev-active");
-          }
-
+          updateTabAdjacencyClasses();
           setTimeout(() => monacoEditor?.focus(), 0);
         }
       }
@@ -4117,15 +4130,7 @@ async function attemptCloseTab(data) {
         } else {
           const currentActive = tabData.find((t) => t.element.classList.contains("active"));
           if (currentActive) {
-            document.querySelectorAll(".tab").forEach((tab) => {
-              tab.classList.remove("prev-active");
-            });
-
-            const prev = currentActive.element.previousElementSibling;
-            if (prev && prev.classList.contains("tab")) {
-              prev.classList.add("prev-active");
-            }
-
+            updateTabAdjacencyClasses();
             setTimeout(() => monacoEditor?.focus(), 0);
           }
         }
@@ -4238,15 +4243,7 @@ async function attemptCloseTab(data) {
     } else {
       const currentActive = tabData.find((t) => t.element.classList.contains("active"));
       if (currentActive) {
-        document.querySelectorAll(".tab").forEach((tab) => {
-          tab.classList.remove("prev-active");
-        });
-
-        const prev = currentActive.element.previousElementSibling;
-        if (prev && prev.classList.contains("tab")) {
-          prev.classList.add("prev-active");
-        }
-
+        updateTabAdjacencyClasses();
         setTimeout(() => monacoEditor?.focus(), 0);
       }
     }
@@ -4591,10 +4588,7 @@ function switchTab(data) {
   const newActive = data.element;
   newActive.classList.add("active");
 
-  const prev = newActive.previousElementSibling;
-  if (prev && prev.classList.contains("tab")) {
-    prev.classList.add("prev-active");
-  }
+  updateTabAdjacencyClasses();
 
   // update tab content
   monacoEditor.setModel(data.model);
@@ -4637,6 +4631,18 @@ function switchTab(data) {
   }
 
   refreshFileTabStateOnActivate(data);
+}
+
+function updateTabAdjacencyClasses() {
+  document.querySelectorAll(".tab").forEach((tab) => {
+    tab.classList.remove("prev-active");
+  });
+
+  const active = tabData.find((tab) => tab.element.classList.contains("active"));
+  const prev = active?.element?.previousElementSibling;
+  if (prev && prev.classList.contains("tab")) {
+    prev.classList.add("prev-active");
+  }
 }
 
 async function refreshFileTabStateOnActivate(tab) {
@@ -4925,23 +4931,66 @@ function updateRecentFiles(filePath) {
   populateRecentMenu();
 }
 
-async function openNoteById(noteId) {
+async function openNoteById(noteId, options = {}) {
+  const preview = options.preview !== false;
   if (!noteId) return;
+
   const existingTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
   if (existingTab) {
+    if (!preview) keepOpenNoteTab(existingTab);
     switchTab(existingTab);
-    return;
+    return existingTab;
   }
 
-  const note = await window.electronAPI.readNote(noteId);
-  if (!note?.exists) {
-    await populateRecentMenu();
-    return;
+  const pending = pendingNoteOpens.get(noteId);
+  if (pending) {
+    const pendingTab = await pending;
+    if (pendingTab) {
+      if (!preview) keepOpenNoteTab(pendingTab);
+      switchTab(pendingTab);
+    }
+    return pendingTab;
   }
 
-  const restoreIndex = tabData.length;
-  const noteTab = await createNoteTab(note.content, restoreIndex, note);
-  if (noteTab) switchTab(noteTab);
+  const previewSeq = preview ? ++notePreviewOpenSeq : null;
+
+  const openPromise = (async () => {
+    const note = await window.electronAPI.readNote(noteId);
+    if (preview && previewSeq !== notePreviewOpenSeq) return null;
+    if (!note?.exists) {
+      await populateRecentMenu();
+      return null;
+    }
+
+    let noteTab = null;
+
+    if (preview) {
+      const previewTab = tabData.find((tab) => tab.isNotePreview);
+      if (previewTab) {
+        moveTabToIndex(previewTab, getActiveTabInsertIndex(previewTab));
+        previewTab._ignoreUnsavedCheck = true;
+        previewTab.model.setValue(note.content || "");
+        applyNoteDataToTab(previewTab, note, note.content || "", { preview: true });
+        noteTab = previewTab;
+      }
+    }
+
+    if (!noteTab) {
+      const restoreIndex = getActiveTabInsertIndex();
+      noteTab = await createNoteTab(note.content, restoreIndex, note, { preview });
+    }
+
+    if (preview && previewSeq !== notePreviewOpenSeq) return null;
+    if (noteTab) switchTab(noteTab);
+    return noteTab;
+  })();
+
+  pendingNoteOpens.set(noteId, openPromise);
+  try {
+    return await openPromise;
+  } finally {
+    if (pendingNoteOpens.get(noteId) === openPromise) pendingNoteOpens.delete(noteId);
+  }
 }
 
 async function renderNotesList() {
@@ -4976,7 +5025,16 @@ async function renderNotesList() {
     item.append(title, pinButton);
     item.addEventListener("click", async () => {
       if (suppressNoteClick) return;
-      await openNoteById(note.id);
+      await openNoteById(note.id, { preview: true });
+    });
+    item.addEventListener("dblclick", async () => {
+      if (suppressNoteClick) return;
+      await openNoteById(note.id, { preview: false });
+    });
+    item.addEventListener("auxclick", async (e) => {
+      if (e.button !== 1 || suppressNoteClick) return;
+      e.preventDefault();
+      await openNoteById(note.id, { preview: false });
     });
     item.addEventListener("contextmenu", (e) => showNoteContextMenu(e, note.id));
     item.addEventListener("mousedown", (e) => beginNoteListDrag(e, item));
@@ -5036,6 +5094,7 @@ async function convertNoteToUntitled(noteId) {
   if (openTab) {
     clearAutosaveTimer(openTab);
     openTab.isNote = false;
+    openTab.isNotePreview = false;
     openTab.noteId = null;
     openTab.notePath = null;
     openTab.noteTitle = null;
@@ -5043,7 +5102,7 @@ async function convertNoteToUntitled(noteId) {
     openTab.path = null;
     openTab.draftId = createAutosaveId();
     openTab.name = `${i18next.t("file.untitled")}.txt`;
-    openTab.element.classList.remove("note");
+    openTab.element.classList.remove("note", "preview");
     const nameSpan = openTab.element.querySelector(".name");
     if (nameSpan) {
       nameSpan.textContent = openTab.name;
@@ -5177,11 +5236,41 @@ function moveTabToDropPlacement(tab, placement = null) {
   if (reference && reference !== tab.element) tabs.insertBefore(tab.element, reference);
   else tabs.appendChild(tab.element);
 
-  document.querySelectorAll(".tab").forEach((tabElement) => tabElement.classList.remove("prev-active"));
-  const prev = tab.element.previousElementSibling;
-  if (prev && prev.classList.contains("tab") && tab.element.classList.contains("active")) {
-    prev.classList.add("prev-active");
-  }
+  updateTabAdjacencyClasses();
+  scheduleAllUnsavedTabAutosaves();
+  return tab;
+}
+
+function getActiveTabInsertIndex(excludeTab = null) {
+  const active = tabData.find((tab) => tab.element.classList.contains("active"));
+  if (!active) return tabData.length;
+  if (active === excludeTab) return tabData.indexOf(active);
+
+  const activeIndex = tabData.indexOf(active);
+  if (activeIndex === -1) return tabData.length;
+
+  const excludedIndex = excludeTab ? tabData.indexOf(excludeTab) : -1;
+  const adjustment = excludedIndex !== -1 && excludedIndex < activeIndex ? 0 : 1;
+  return activeIndex + adjustment;
+}
+
+function moveTabToIndex(tab, index) {
+  if (!tab || index === null || index === undefined) return tab;
+  const oldIndex = tabData.indexOf(tab);
+  if (oldIndex === -1) return tab;
+
+  const targetIndex = Math.max(0, Math.min(index, tabData.length));
+  if (oldIndex === targetIndex) return tab;
+
+  tabData.splice(oldIndex, 1);
+  const finalIndex = Math.max(0, Math.min(targetIndex, tabData.length));
+  const reference = tabData[finalIndex]?.element || null;
+  tabData.splice(finalIndex, 0, tab);
+
+  if (reference && reference !== tab.element) tabs.insertBefore(tab.element, reference);
+  else tabs.appendChild(tab.element);
+
+  updateTabAdjacencyClasses();
   scheduleAllUnsavedTabAutosaves();
   return tab;
 }
@@ -5192,6 +5281,8 @@ function getOpenNoteTabById(noteId) {
 
 let noteDragState = null;
 let suppressNoteClick = false;
+let notePreviewOpenSeq = 0;
+const pendingNoteOpens = new Map();
 
 function beginNoteListDrag(e, item) {
   if (e.button !== 0 || e.target.closest(".note-pin-button")) return;
@@ -5584,7 +5675,7 @@ async function populateRecentMenu() {
 
     button.addEventListener("click", async () => {
       recentMenu.style.display = "none";
-      await openNoteById(note.id);
+      await openNoteById(note.id, { preview: false });
     });
     recentMenu.appendChild(button);
   });
@@ -5898,6 +5989,7 @@ function updateTabContextMenuState(menu, tab) {
   const copyPathBtn = menu.querySelector('[data-action="copyPath"]');
   const openPathBtn = menu.querySelector('[data-action="openPath"]');
   const openInNewWindowBtn = menu.querySelector('[data-action="openInNewWindow"]');
+  const keepOpenBtn = menu.querySelector('[data-action="keepOpen"]');
 
   const hasPath = tab && tab.path;
   const isWarn = tab.isWarned;
@@ -5905,6 +5997,7 @@ function updateTabContextMenuState(menu, tab) {
   if (copyPathBtn) copyPathBtn.classList.toggle("disabled", !hasPath || isWarn);
   if (openPathBtn) openPathBtn.classList.toggle("disabled", !hasPath || isWarn);
   if (openInNewWindowBtn) openInNewWindowBtn.classList.toggle("disabled", isWarn || tabData.length === 1);
+  if (keepOpenBtn) keepOpenBtn.classList.toggle("disabled", !tab?.isNotePreview);
 }
 
 // Close multiple tabs one by one (close others, close to the right & close saved)
@@ -5986,6 +6079,10 @@ tabContextMenu.addEventListener("click", async (e) => {
 
     case "openInNewWindow":
       await openTabInNewWindow(targetTab);
+      break;
+
+    case "keepOpen":
+      keepOpenNoteTab(targetTab);
       break;
   }
 });
