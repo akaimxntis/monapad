@@ -498,6 +498,10 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      #recent-menu button.recent-file-button span {
+        direction: rtl;
+        text-align: left;
+      }
       #recent-menu button:hover {
         background: var(--color3);
       }
@@ -654,7 +658,7 @@
       }
       /* tab with reload button */
       .tab.has-reload-button {
-        padding-left: 5px;
+        padding-left: 10px;
       }
 
       /* close button: (.tab >) .close(.show-unsaved) > .close-svg, .unsaved-dot */
@@ -750,13 +754,15 @@
         pointer-events: none;
       }
 
-      /* name span: (.tab >) .name > .reload-button */
-      .tab .name {
-        flex: 1 1 auto;
+      /* tab title area: (.tab >) .name-wrap > (.reload-button +) .name */
+      .tab .name-wrap {
+        flex: 1 1 0;
+        min-width: 0;
+        margin-left: -5px;
+        padding-left: 5px;
         overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
         display: flex;
+        align-items: center;
         text-decoration: none;
         -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
         mask-image: linear-gradient(to right, black 80%, transparent 100%);
@@ -766,9 +772,20 @@
         mask-repeat: no-repeat;
         line-height: 20px;
       }
-      #tabs:not(.compact) .tab:hover .name,
-      .tab.active .name,
-      .tab .name:has(+ .show-unsaved) {
+      .tab .name {
+        flex: 1 1 auto;
+        min-width: 0;
+        margin-left: -3px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-decoration: none;
+      }
+      .tab.has-reload-button .name {
+        margin-left: -5px;
+      }
+      #tabs:not(.compact) .tab:hover .name-wrap,
+      .tab.active .name-wrap,
+      .tab .name-wrap:has(+ .show-unsaved) {
         max-width: calc(100% - 17px);
       }
       /* warned name span */
@@ -795,10 +812,12 @@
       /* reload button */
       .tab .reload-button {
         opacity: 1;
+        flex: 0 0 20px;
+        width: 20px;
         min-width: 20px;
         height: 20px;
         padding: 0;
-        margin-right: 5px;
+        margin-right: 3px;
         border-radius: 5px;
         background: none;
         border: none;
@@ -807,6 +826,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        transform: translateX(-5px);
       }
       .tab .reload-button:hover {
         background: var(--color3);

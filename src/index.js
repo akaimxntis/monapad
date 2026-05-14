@@ -2117,6 +2117,12 @@ function updatePinnedTabIcon(tab) {
   close.appendChild(pinSvg);
 }
 
+function tabHasUnsavedContent(tab) {
+  if (!tab || tab.isNote) return false;
+  const content = tab === currentTab ? monacoEditor?.getValue() : (tab.model?.getValue() ?? tab.content ?? "");
+  return hasUnsavedChanges(tab, content);
+}
+
 function setTabPinned(tab, pinned, options = {}) {
   if (!tab) return false;
   const nextPinned = Boolean(pinned);
@@ -4176,6 +4182,9 @@ function createTab(name, content = "", path = null, insertIndex = null) {
   nameSpan.className = "name";
   nameSpan.textContent = name;
   nameSpan.title = name;
+  const nameWrap = document.createElement("div");
+  nameWrap.className = "name-wrap";
+  nameWrap.appendChild(nameSpan);
 
   const close = document.createElement("span");
   close.className = "close";
@@ -4197,7 +4206,7 @@ function createTab(name, content = "", path = null, insertIndex = null) {
   close.appendChild(unsavedDot);
   close.appendChild(closeSvg);
 
-  tab.appendChild(nameSpan);
+  tab.appendChild(nameWrap);
   tab.appendChild(close);
 
   const model = monaco.editor.createModel(content, "monapad");
@@ -5055,6 +5064,13 @@ async function refreshFileTabStateOnActivate(tab) {
       return;
     }
 
+    if (!tabHasUnsavedContent(tab)) {
+      applyFileContentToEditor(tab, content);
+      return;
+    }
+
+    if (tab.element.classList.contains("has-reload-button")) return;
+
     showMessage("file-modified");
     reloadButton(tab, tab.path, "add");
   } catch (error) {
@@ -5123,6 +5139,16 @@ async function handleFileChange(targetTab, filePath) {
     return;
   }
 
+  if (!tabHasUnsavedContent(targetTab)) {
+    applyFileContentToEditor(targetTab, content);
+    return;
+  }
+
+  if (targetTab.element.classList.contains("has-reload-button")) {
+    if (targetTab !== currentTab) switchTab(targetTab);
+    return;
+  }
+
   // if file modified externally, add reload button and let user to decide to update or not.
   if (targetTab !== currentTab) switchTab(targetTab);
   showMessage("file-modified");
@@ -5188,7 +5214,7 @@ function reloadButton(tab, filePath, mode) {
     };
 
     const nameEl = tab.element.querySelector(".name");
-    if (nameEl) nameEl.insertBefore(button, nameEl.firstChild);
+    if (nameEl?.parentElement) nameEl.parentElement.insertBefore(button, nameEl);
   }
 }
 
@@ -6082,6 +6108,7 @@ async function populateRecentMenu() {
 
   displayEntries.forEach(({ path }) => {
     const button = document.createElement("button");
+    button.className = "recent-file-button";
     const span = document.createElement("span");
     span.textContent = path;
 
