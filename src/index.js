@@ -2141,12 +2141,12 @@ function toggleTabPinned(tab = currentTab) {
 }
 
 function getPinnedTabCount() {
-  let count = 0;
-  for (const tab of tabData) {
-    if (!tab.isPinned) break;
-    count++;
-  }
-  return count;
+  return tabData.filter((tab) => tab.isPinned).length;
+}
+
+function clampUnpinnedTabInsertIndex(insertIndex) {
+  if (insertIndex === null || insertIndex === undefined) return insertIndex;
+  return Math.max(getPinnedTabCount(), Math.min(insertIndex, tabData.length));
 }
 
 function normalizePinnedTabs() {
@@ -3840,6 +3840,8 @@ function enableTabDragging(tab, data) {
     for (let i = 0; i < tabsArray.length; i++) {
       const targetTab = tabsArray[i];
       if (targetTab === draggingTab) continue;
+      const targetTabData = tabData.find((candidate) => candidate.element === targetTab);
+      if (targetTabData && Boolean(targetTabData.isPinned) !== Boolean(draggingTabData.isPinned)) continue;
 
       const targetRect = targetTab.getBoundingClientRect();
       const targetCenter = targetRect.left + targetRect.width / 2;
@@ -4159,6 +4161,7 @@ function clearPendingTabsWidthAfterClose() {
 // create tab
 function createTab(name, content = "", path = null, insertIndex = null) {
   if (!name) name = `${i18next.t("file.untitled")}.txt`;
+  const targetInsertIndex = clampUnpinnedTabInsertIndex(insertIndex);
 
   // reset tabs max width
   fixedTabsWidth = null;
@@ -4214,10 +4217,10 @@ function createTab(name, content = "", path = null, insertIndex = null) {
     draftId: path ? null : createAutosaveId(),
   };
 
-  if (insertIndex !== null && insertIndex >= 0 && insertIndex < tabData.length) {
-    const referenceTab = tabData[insertIndex].element;
+  if (targetInsertIndex !== null && targetInsertIndex >= 0 && targetInsertIndex < tabData.length) {
+    const referenceTab = tabData[targetInsertIndex].element;
     tabs.insertBefore(tab, referenceTab);
-    tabData.splice(insertIndex, 0, data);
+    tabData.splice(targetInsertIndex, 0, data);
   } else {
     tabs.appendChild(tab);
     tabData.push(data);
@@ -4716,7 +4719,7 @@ async function reopenRecentlyClosedFile() {
       if (!trash?.exists) continue;
 
       let restoredTab = null;
-      if (tabData.length === 1 && !tabData[0].path && !tabData[0].model?.getValue()?.trim()) {
+      if (tabData.length === 1 && !tabData[0].isPinned && !tabData[0].path && !tabData[0].model?.getValue()?.trim()) {
         restoredTab = tabData[0];
         await deleteTabAutosave(restoredTab);
         restoredTab.name = trash.name;
@@ -5615,12 +5618,16 @@ function moveTabToDropPlacement(tab, placement = null) {
   const referenceTabData = placement.referenceTab
     ? tabData.find((candidate) => candidate.element === placement.referenceTab)
     : null;
-  const finalIndex = referenceTabData
+  const rawIndex = referenceTabData
     ? tabData.indexOf(referenceTabData)
     : Math.max(0, Math.min(placement.index, tabData.length));
+  const pinnedBoundary = tabData.filter((candidate) => candidate.isPinned).length;
+  const finalIndex = tab.isPinned
+    ? Math.max(0, Math.min(rawIndex, pinnedBoundary))
+    : Math.max(pinnedBoundary, Math.min(rawIndex, tabData.length));
 
   tabData.splice(finalIndex, 0, tab);
-  const reference = referenceTabData?.element || tabs.children[finalIndex];
+  const reference = tabs.children[finalIndex];
   if (reference && reference !== tab.element) tabs.insertBefore(tab.element, reference);
   else tabs.appendChild(tab.element);
 
@@ -5650,10 +5657,16 @@ function moveTabToIndex(tab, index) {
   if (oldIndex === -1) return tab;
 
   const targetIndex = Math.max(0, Math.min(index, tabData.length));
-  if (oldIndex === targetIndex) return tab;
 
   tabData.splice(oldIndex, 1);
-  const finalIndex = Math.max(0, Math.min(targetIndex, tabData.length));
+  const pinnedBoundary = tabData.filter((candidate) => candidate.isPinned).length;
+  const finalIndex = tab.isPinned
+    ? Math.max(0, Math.min(targetIndex, pinnedBoundary))
+    : Math.max(pinnedBoundary, Math.min(targetIndex, tabData.length));
+  if (oldIndex === finalIndex) {
+    tabData.splice(oldIndex, 0, tab);
+    return tab;
+  }
   const reference = tabData[finalIndex]?.element || null;
   tabData.splice(finalIndex, 0, tab);
 
@@ -5933,9 +5946,11 @@ window.addEventListener("mousemove", (e) => {
 
   const items = [...notesList.querySelectorAll(".note-list-item")];
   const currentRect = item.getBoundingClientRect();
+  const isDraggingPinnedNote = item.classList.contains("pinned");
   for (let i = 0; i < items.length; i++) {
     const target = items[i];
     if (target === item) continue;
+    if (target.classList.contains("pinned") !== isDraggingPinnedNote) continue;
 
     const targetRect = target.getBoundingClientRect();
     const targetCenter = targetRect.top + targetRect.height / 2;
