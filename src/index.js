@@ -2820,6 +2820,7 @@ function getNotesPanelWidth() {
 function updateEditorLeftMargin() {
   const lineNumberOffset = settings.lineNumbers ? 20 : 0;
   const panelOffset = document.body.classList.contains("notes-panel-open") ? getNotesPanelWidth() : 0;
+  document.documentElement.style.setProperty("--editor-line-number-offset", `${lineNumberOffset}px`);
   editor.style.marginLeft = `${lineNumberOffset + panelOffset}px`;
 }
 
@@ -6726,10 +6727,11 @@ function isSettingsMenuOpen() {
 }
 
 function closeSettingsMenu() {
+  const wasOpen = isSettingsMenuOpen();
   settingsMenu.style.display = "none";
   langChoices.hideDropdown();
   fontChoices.hideDropdown();
-  monacoEditor?.focus();
+  if (wasOpen) monacoEditor?.focus();
 }
 
 function isElementOpen(element) {

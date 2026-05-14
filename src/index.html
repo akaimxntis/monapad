@@ -89,6 +89,7 @@
         --toolbar-height: 35px;
         --status-bar-height: 25px;
         --notes-panel-width: 260px;
+        --editor-line-number-offset: 0px;
 
         /* You can specify one or more fonts to be used in the editor in order of priority */
         /* If this field is not empty, the font setting in the app will be ignored */
@@ -244,10 +245,12 @@
       } */
       .monaco-hover.workbench-hover {
         bottom: -33px !important;
+        margin-left: var(--editor-line-number-offset) !important;
       }
       /* tooltip arrow */
       .workbench-hover-pointer {
         margin-bottom: -33px !important;
+        margin-left: var(--editor-line-number-offset) !important;
       }
 
       line,
@@ -1436,10 +1439,11 @@
         box-sizing: border-box;
         background: var(--color1);
         color: var(--editorText);
-        border: 1px solid var(--color3);
+        border: none;
+        border-radius: 5px;
         padding: 0 8px;
         font: inherit;
-        font-size: 13px;
+        font-size: 14px;
         user-select: text;
       }
       #notes-search::placeholder {
