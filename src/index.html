@@ -90,6 +90,7 @@
         --status-bar-height: 25px;
         --notes-panel-width: 260px;
         --editor-line-number-offset: 0px;
+        --editor-notes-panel-offset: 0px;
 
         /* You can specify one or more fonts to be used in the editor in order of priority */
         /* If this field is not empty, the font setting in the app will be ignored */
@@ -245,12 +246,12 @@
       } */
       .monaco-hover.workbench-hover {
         bottom: -33px !important;
-        margin-left: var(--editor-line-number-offset) !important;
+        transform: translateX(calc(var(--editor-line-number-offset) + var(--editor-notes-panel-offset))) !important;
       }
       /* tooltip arrow */
       .workbench-hover-pointer {
         margin-bottom: -33px !important;
-        margin-left: var(--editor-line-number-offset) !important;
+        transform: translateX(calc(var(--editor-line-number-offset) + var(--editor-notes-panel-offset))) !important;
       }
 
       line,
@@ -501,6 +502,9 @@
       #recent-menu button.recent-file-button span {
         direction: rtl;
         text-align: left;
+      }
+      #recent-menu button.recent-note-button span {
+        color: var(--highlight);
       }
       #recent-menu button:hover {
         background: var(--color3);

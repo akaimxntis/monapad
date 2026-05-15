@@ -1764,6 +1764,7 @@ function setNoteTabPreview(tab, preview) {
 function keepOpenNoteTab(tab = currentTab) {
   if (!tab?.isNotePreview) return false;
   setNoteTabPreview(tab, false);
+  updateRecentNote(tab.noteId);
   if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
   return true;
 }
@@ -2858,6 +2859,7 @@ function updateEditorLeftMargin() {
   const lineNumberOffset = settings.lineNumbers ? 20 : 0;
   const panelOffset = document.body.classList.contains("notes-panel-open") ? getNotesPanelWidth() : 0;
   document.documentElement.style.setProperty("--editor-line-number-offset", `${lineNumberOffset}px`);
+  document.documentElement.style.setProperty("--editor-notes-panel-offset", `${panelOffset}px`);
   editor.style.marginLeft = `${lineNumberOffset + panelOffset}px`;
 }
 
@@ -4365,7 +4367,10 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
 
 async function createNewNote() {
   const data = await createNoteTab("", null, null, { preview: false });
-  if (data) switchTab(data);
+  if (data) {
+    switchTab(data);
+    updateRecentNote(data.noteId);
+  }
 }
 
 async function saveAsNote() {
@@ -4399,7 +4404,7 @@ async function saveAsNote() {
     if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
     updateStatusBar();
     await renderNotesList();
-    await populateRecentMenu();
+    updateRecentNote(active.noteId);
     showMessage("file-saved");
     return true;
   }
@@ -4407,6 +4412,7 @@ async function saveAsNote() {
   const newTab = await createNoteTab(content, null, note);
   if (newTab) {
     switchTab(newTab);
+    updateRecentNote(newTab.noteId);
     showMessage("file-saved");
     return true;
   }
@@ -4750,6 +4756,7 @@ async function reopenRecentlyClosedFile() {
       const restoredTab = await createNoteTab(note.content, restoreIndex, note);
       if (restoredTab) {
         switchTab(restoredTab);
+        updateRecentNote(restoredTab.noteId);
         syncRecentlyClosedFilesState();
         return;
       }
@@ -5360,16 +5367,66 @@ async function loadFileByPath(filePath, insertIndex = null) {
 }
 
 // recently opened file handler
+function getRecentHistoryEntries() {
+  let recent = [];
+  try {
+    recent = JSON.parse(localStorage.getItem("recentFiles") || "[]");
+  } catch {
+    recent = [];
+  }
+
+  return recent
+    .map((item) => {
+      if (typeof item === "string") return { type: "file", path: item, exists: true };
+      if (!item || typeof item !== "object") return null;
+      if (item.type === "note" && typeof item.noteId === "string") return { type: "note", noteId: item.noteId };
+      if (typeof item.path === "string") return { type: "file", path: item.path, exists: item.exists !== false };
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function storeRecentHistoryEntries(entries) {
+  const seenFiles = new Set();
+  const seenNotes = new Set();
+  const nextEntries = [];
+  let fileCount = 0;
+  let noteCount = 0;
+
+  for (const entry of entries) {
+    if (entry.type === "file" && entry.path && !seenFiles.has(entry.path)) {
+      seenFiles.add(entry.path);
+      if (fileCount < 16) {
+        nextEntries.push({ type: "file", path: entry.path, exists: entry.exists !== false });
+        fileCount++;
+      }
+    } else if (entry.type === "note" && entry.noteId && !seenNotes.has(entry.noteId)) {
+      seenNotes.add(entry.noteId);
+      if (noteCount < 16) {
+        nextEntries.push({ type: "note", noteId: entry.noteId });
+        noteCount++;
+      }
+    }
+  }
+
+  localStorage.setItem("recentFiles", JSON.stringify(nextEntries.slice(0, 24)));
+}
+
 function updateRecentFiles(filePath) {
   if (!filePath) return;
-  let recent = JSON.parse(localStorage.getItem("recentFiles") || "[]");
-  recent = recent.filter((item) => {
-    const path = typeof item === "string" ? item : item?.path;
-    return path !== filePath;
-  });
+  let recent = getRecentHistoryEntries();
+  recent = recent.filter((item) => item.type !== "file" || item.path !== filePath);
   recent.unshift({ type: "file", path: filePath, exists: true });
-  if (recent.length > 8) recent = recent.slice(0, 8);
-  localStorage.setItem("recentFiles", JSON.stringify(recent));
+  storeRecentHistoryEntries(recent);
+  populateRecentMenu();
+}
+
+function updateRecentNote(noteId) {
+  if (!noteId) return;
+  let recent = getRecentHistoryEntries();
+  recent = recent.filter((item) => item.type !== "note" || item.noteId !== noteId);
+  recent.unshift({ type: "note", noteId });
+  storeRecentHistoryEntries(recent);
   populateRecentMenu();
 }
 
@@ -5379,8 +5436,10 @@ async function openNoteById(noteId, options = {}) {
 
   const existingTab = tabData.find((tab) => tab.isNote && tab.noteId === noteId);
   if (existingTab) {
+    const wasPreview = existingTab.isNotePreview;
     if (!preview) keepOpenNoteTab(existingTab);
     switchTab(existingTab);
+    if (!preview && !wasPreview) updateRecentNote(noteId);
     return existingTab;
   }
 
@@ -5388,8 +5447,10 @@ async function openNoteById(noteId, options = {}) {
   if (pending) {
     const pendingTab = await pending;
     if (pendingTab) {
+      const wasPreview = pendingTab.isNotePreview;
       if (!preview) keepOpenNoteTab(pendingTab);
       switchTab(pendingTab);
+      if (!preview && !wasPreview) updateRecentNote(noteId);
     }
     return pendingTab;
   }
@@ -5423,7 +5484,10 @@ async function openNoteById(noteId, options = {}) {
     }
 
     if (preview && previewSeq !== notePreviewOpenSeq) return null;
-    if (noteTab) switchTab(noteTab);
+    if (noteTab) {
+      switchTab(noteTab);
+      if (!preview) updateRecentNote(noteId);
+    }
     return noteTab;
   })();
 
@@ -5748,7 +5812,9 @@ function updateNoteSearchPreviewElement(row) {
   const matchId = row?.dataset?.matchId;
   if (!preview || !before || !hit || !after || !matchId) return;
 
-  const match = row.noteSearchMatch || noteSearchState.results.flatMap((result) => result.matches).find((item) => item.id === matchId);
+  const match =
+    row.noteSearchMatch ||
+    noteSearchState.results.flatMap((result) => result.matches).find((item) => item.id === matchId);
   if (!match) return;
 
   const width = preview.clientWidth;
@@ -5912,7 +5978,9 @@ async function runNoteSearch() {
   renderNoteSearchMessage(getNoteSearchLabel("searching", "Searching..."));
 
   try {
-    const notes = sortNotesForPanel(Array.isArray(notesIndexCache) && notesIndexCache.length ? notesIndexCache : await window.electronAPI.listNotes());
+    const notes = sortNotesForPanel(
+      Array.isArray(notesIndexCache) && notesIndexCache.length ? notesIndexCache : await window.electronAPI.listNotes(),
+    );
     const results = [];
     let totalMatches = 0;
 
@@ -5922,7 +5990,9 @@ async function runNoteSearch() {
         const content = await getSearchableNoteContent(note);
         if (seq !== noteSearchSeq || content === null) return;
 
-        const matches = searchNoteContent(note, content, query).filter((match) => !noteSearchState.dismissedMatches.has(match.id));
+        const matches = searchNoteContent(note, content, query).filter(
+          (match) => !noteSearchState.dismissedMatches.has(match.id),
+        );
         if (!matches.length) return;
 
         totalMatches += matches.length;
@@ -6242,6 +6312,7 @@ async function createNoteTabFromPayload(payload, insertIndex = null, placement =
   if (existingTab) {
     moveTabToDropPlacement(existingTab, adjustedPlacement || { index: adjustedInsertIndex, referenceTab: null });
     switchTab(existingTab);
+    updateRecentNote(existingTab.noteId);
     return existingTab;
   }
 
@@ -6257,7 +6328,10 @@ async function createNoteTabFromPayload(payload, insertIndex = null, placement =
     },
   };
   const tab = await createNoteTab(payload.content || "", adjustedInsertIndex, note);
-  if (tab) switchTab(tab);
+  if (tab) {
+    switchTab(tab);
+    updateRecentNote(tab.noteId);
+  }
   return tab;
 }
 
@@ -6662,117 +6736,85 @@ window.addEventListener("mouseup", async (e) => {
 
 // update open recent menu
 async function populateRecentMenu() {
-  let recent = JSON.parse(localStorage.getItem("recentFiles") || "[]");
+  let recent = getRecentHistoryEntries();
   const notes = await window.electronAPI.listNotes();
-  const noteEntries = Array.isArray(notes)
-    ? notes
-        .filter((note) => note?.id && note?.contentBytes > 0)
-        .sort((a, b) => {
-          if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
-          const aOrder = Number.isFinite(a.order) ? a.order : Number.MAX_SAFE_INTEGER;
-          const bOrder = Number.isFinite(b.order) ? b.order : Number.MAX_SAFE_INTEGER;
-          return aOrder - bOrder || (a.createdAt || 0) - (b.createdAt || 0);
-        })
-    : [];
+  const notesById = new Map(
+    (Array.isArray(notes) ? notes : []).filter((note) => note?.id).map((note) => [note.id, note]),
+  );
 
-  // Compatible with old format: if string, convert to { path, exists }
-  recent = recent
-    .map((item) => {
-      if (typeof item === "string") return { type: "file", path: item, exists: true };
-      if (typeof item === "object" && typeof item.path === "string") {
-        return { type: "file", path: item.path, exists: true };
-      }
-      return null;
-    })
-    .filter(Boolean); // Exclude null and undefined
-
-  const seenPaths = new Set();
-  recent = recent.filter((entry) => {
-    if (seenPaths.has(entry.path)) return false;
-    seenPaths.add(entry.path);
-    return true;
-  });
-
-  // check file existance
-  for (const entry of recent) {
-    try {
-      entry.exists = await window.electronAPI.fileExists(entry.path);
-    } catch {
-      entry.exists = false;
-    }
-  }
-
-  // store existing files up to 8 & non existing files up to 8 (order maintained)
   const nextRecent = [];
-  let validCount = 0;
+  let existingFileCount = 0;
+  let missingFileCount = 0;
 
   for (const entry of recent) {
-    if (entry.exists) {
-      if (validCount < 8) {
-        nextRecent.push({ path: entry.path, exists: true });
-        validCount++;
+    if (entry.type === "file") {
+      let exists = false;
+      try {
+        exists = await window.electronAPI.fileExists(entry.path);
+      } catch {
+        exists = false;
       }
-    } else {
-      nextRecent.push({ path: entry.path, exists: false });
+
+      if (exists) {
+        if (existingFileCount < 16) {
+          nextRecent.push({ type: "file", path: entry.path, exists: true });
+          existingFileCount++;
+        }
+      } else if (missingFileCount < 8) {
+        nextRecent.push({ type: "file", path: entry.path, exists: false });
+        missingFileCount++;
+      }
+    } else if (entry.type === "note" && notesById.has(entry.noteId)) {
+      nextRecent.push({ type: "note", noteId: entry.noteId });
     }
-    if (nextRecent.length >= 16) break;
+    if (nextRecent.length >= 24) break;
   }
 
-  localStorage.setItem("recentFiles", JSON.stringify(nextRecent));
+  storeRecentHistoryEntries(nextRecent);
 
-  // update menu with only existing files
-  const displayEntries = nextRecent.filter((e) => e.exists).slice(0, 8);
+  const displayEntries = nextRecent.filter((entry) => entry.type === "note" || entry.exists).slice(0, 16);
 
   recentMenu.innerHTML = "";
 
   // disable button when no recently opened files
-  if (noteEntries.length === 0 && displayEntries.length === 0) {
+  if (displayEntries.length === 0) {
     openRecentBtn.classList.add("disabled");
     recentMenu.style.display = "none";
     return 0;
   }
   openRecentBtn.classList.remove("disabled");
 
-  displayEntries.forEach(({ path }) => {
-    const button = document.createElement("button");
-    button.className = "recent-file-button";
-    const span = document.createElement("span");
-    span.textContent = path;
-
-    button.appendChild(span);
-    button.title = path;
-
-    button.addEventListener("click", async () => {
-      recentMenu.style.display = "none";
-      console.log("Opening file:", path, typeof path);
-      if (typeof path === "string") {
-        await loadFileByPath(path);
-      } else {
-        console.warn("Invalid path value:", path);
-      }
-    });
-    recentMenu.appendChild(button);
-  });
-
-  if (noteEntries.length > 0 && displayEntries.length > 0) {
-    const hr = document.createElement("div");
-    hr.className = "hr";
-    recentMenu.appendChild(hr);
-  }
-
-  noteEntries.forEach((note) => {
+  displayEntries.forEach((entry) => {
     const button = document.createElement("button");
     const span = document.createElement("span");
-    const title = truncateNoteTitle(note.title || "New Note");
-    span.textContent = title;
+
+    if (entry.type === "note") {
+      const note = notesById.get(entry.noteId);
+      const title = truncateNoteTitle(note?.title || "New Note");
+      button.className = "recent-note-button";
+      span.textContent = title;
+      button.title = title;
+      button.addEventListener("click", async () => {
+        recentMenu.style.display = "none";
+        await openNoteById(entry.noteId, { preview: false });
+      });
+    } else {
+      const path = entry.path;
+      button.className = "recent-file-button";
+      span.textContent = path;
+      button.title = path;
+      button.addEventListener("click", async () => {
+        recentMenu.style.display = "none";
+        console.log("Opening file:", path, typeof path);
+        if (typeof path === "string") {
+          await loadFileByPath(path);
+        } else {
+          console.warn("Invalid path value:", path);
+        }
+      });
+    }
 
     button.appendChild(span);
-    button.title = title;
-
-    button.addEventListener("click", async () => {
-      recentMenu.style.display = "none";
-      await openNoteById(note.id, { preview: false });
-    });
     recentMenu.appendChild(button);
   });
 
@@ -6789,7 +6831,7 @@ async function populateRecentMenu() {
     populateRecentMenu();
   });
   recentMenu.appendChild(clearButton);
-  return noteEntries.length + displayEntries.length;
+  return displayEntries.length;
 }
 populateRecentMenu();
 renderNotesList();
@@ -7194,7 +7236,10 @@ noteContextMenu?.addEventListener("click", async (e) => {
       if (result?.success) {
         const note = await window.electronAPI.readNote(result.id);
         const duplicatedTab = await createNoteTab(note?.content || "", null, note);
-        if (duplicatedTab) switchTab(duplicatedTab);
+        if (duplicatedTab) {
+          switchTab(duplicatedTab);
+          updateRecentNote(duplicatedTab.noteId);
+        }
         await renderNotesList();
         await populateRecentMenu();
       }
