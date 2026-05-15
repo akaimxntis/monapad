@@ -60,7 +60,7 @@
     "pageCopied": "Kopiert!"
   },
   "autosave": {
-    "restoreMessage": "Für \"{{name}}\" wurden ungespeicherte Änderungen gefunden. Wiederherstellen?",
+    "restoreMessage": "Für \"{{name}}\" wurden ungespeicherte Änderungen gefunden.\nWiederherstellen?",
     "restore": "Wiederherstellen",
     "discard": "Verwerfen"
   },
@@ -137,6 +137,7 @@
     "matchWholeWord": "Ganzes Wort suchen",
     "useRegex": "Regulären Ausdruck verwenden",
     "dismiss": "Ausblenden",
+    "historyHint": "für Verlauf",
     "searching": "Suche...",
     "noResults": "Keine Ergebnisse gefunden",
     "searchFailed": "Suche fehlgeschlagen",

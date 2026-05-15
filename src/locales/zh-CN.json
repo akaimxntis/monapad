@@ -60,7 +60,7 @@
     "pageCopied": "已复制！"
   },
   "autosave": {
-    "restoreMessage": "发现 \"{{name}}\" 有未保存的更改。要恢复吗？",
+    "restoreMessage": "发现 \"{{name}}\" 有未保存的更改。\n要恢复吗？",
     "restore": "恢复",
     "discard": "丢弃"
   },
@@ -137,6 +137,7 @@
     "matchWholeWord": "全字匹配",
     "useRegex": "使用正则表达式",
     "dismiss": "隐藏",
+    "historyHint": "查看历史记录",
     "searching": "正在搜索...",
     "noResults": "未找到结果",
     "searchFailed": "搜索失败",

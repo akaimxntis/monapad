@@ -33,6 +33,7 @@ const notesPanelClose = document.getElementById("notes-panel-close");
 const notesPanelMenuButton = document.getElementById("notes-panel-menu-button");
 const notesAddButton = document.getElementById("notes-add");
 const notesSearchInput = document.getElementById("notes-search");
+const notesSearchPlaceholder = document.getElementById("notes-search-placeholder");
 const notesSearchResults = document.getElementById("notes-search-results");
 const notesSearchCaseButton = document.getElementById("notes-search-case");
 const notesSearchWordButton = document.getElementById("notes-search-word");
@@ -196,12 +197,16 @@ const NOTE_SEARCH_PREVIEW_MAX = 1000;
 const NOTE_SEARCH_HOVER_MAX = 100;
 const NOTE_SEARCH_BEFORE_MAX_RATIO = 0.7;
 const NOTE_SEARCH_MATCH_MIN_RATIO = 0.3;
+const NOTE_SEARCH_HISTORY_LIMIT = 100;
 let noteSearchTimer = null;
 let noteSearchSeq = 0;
 let noteSearchPreviewFrame = null;
 let noteSearchMeasureContext = null;
 let noteSearchPreviewObserver = null;
 let noteSearchVisiblePreviewRows = new Set();
+let noteSearchHistory = [];
+let noteSearchHistoryIndex = -1;
+let noteSearchHistoryDraft = "";
 let noteSearchState = {
   query: "",
   matchCase: false,
@@ -515,7 +520,7 @@ function updateMenuLabels() {
 
   // notes panel
   const notesSearch = document.getElementById("notes-search");
-  if (notesSearch) notesSearch.placeholder = i18next.t("notePanel.search");
+  if (notesSearch) updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
   updateNoteSearchLabels();
   if (notesAddButton) {
     const newNoteLabel = i18next.t("notePanel.newNote");
@@ -2146,6 +2151,9 @@ function updatePinnedTabIcon(tab) {
   const pinSvg = document.createElement("div");
   pinSvg.className = `pin-svg${tab.isFileSaved ? "" : " dirty"}`;
   pinSvg.innerHTML = tab.isFileSaved ? TAB_PIN_ICON_SVG : TAB_PIN_DIRTY_ICON_SVG;
+  const label = i18next.t("tabMenu.unpin");
+  pinSvg.title = label;
+  pinSvg.setAttribute("aria-label", label);
   close.appendChild(pinSvg);
 }
 
@@ -2463,21 +2471,29 @@ function bindLazyFontPreviewEvents() {
 
 // scroll fontFamilySelect to top of settingsMenu when its dropdown is not fully inside it
 function adjustDropdownScroll() {
-  requestAnimationFrame(() => {
+  const scrollNow = () => {
     const dropdown = document.querySelector(".font-select-row .choices__list--dropdown");
-    if (!dropdown || !fontSelectRow) return;
+    if (!dropdown || !fontSelectRow) return null;
 
     const settingsRect = settingsMenu.getBoundingClientRect();
     const dropdownRect = dropdown.getBoundingClientRect();
 
     const overflowsBottom = dropdownRect.bottom > settingsRect.bottom;
     const overflowsTop = dropdownRect.top < settingsRect.top;
+    if (!overflowsBottom && !overflowsTop) return null;
 
-    if (overflowsBottom || overflowsTop) {
-      const scrollTargetY = fontSelectRow.offsetTop;
-      settingsMenu.scrollTop = scrollTargetY;
+    const scrollTargetY = fontSelectRow.offsetTop;
+    settingsMenu.scrollTop = scrollTargetY;
+    return scrollTargetY;
+  };
+
+  const scrollTargetY = scrollNow();
+  requestAnimationFrame(() => {
+    const nextScrollTargetY = scrollTargetY ?? scrollNow();
+    if (nextScrollTargetY !== null) {
+      settingsMenu.scrollTop = nextScrollTargetY;
       requestAnimationFrame(() => {
-        settingsMenu.scrollTop = scrollTargetY;
+        settingsMenu.scrollTop = nextScrollTargetY;
       });
     }
   });
@@ -5553,6 +5569,9 @@ async function renderNotesList() {
 }
 
 notesSearchInput?.addEventListener("input", () => {
+  noteSearchHistoryIndex = -1;
+  noteSearchHistoryDraft = "";
+  updateNoteSearchPlaceholder(true);
   noteSearchState.dismissedMatches.clear();
   if (!getNoteSearchQuery()) {
     clearNoteSearchResults();
@@ -5563,6 +5582,16 @@ notesSearchInput?.addEventListener("input", () => {
 });
 
 notesSearchInput?.addEventListener("keydown", (e) => {
+  if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    if (showNoteSearchHistoryValue(e.key === "ArrowUp" ? -1 : 1)) e.preventDefault();
+    return;
+  }
+
+  if (e.key === "Enter" && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    addNoteSearchHistory(getNoteSearchQuery());
+    return;
+  }
+
   if (e.key === "Escape" && getNoteSearchQuery()) {
     e.preventDefault();
     notesSearchInput.value = "";
@@ -5582,6 +5611,17 @@ notesSearchInput?.addEventListener("keydown", (e) => {
     e.preventDefault();
     toggleNoteSearchOption("regex");
   }
+});
+
+notesSearchInput?.addEventListener("focus", () => {
+  updateNoteSearchPlaceholder(true);
+});
+
+notesSearchInput?.addEventListener("blur", () => {
+  addNoteSearchHistory(getNoteSearchQuery());
+  noteSearchHistoryIndex = -1;
+  noteSearchHistoryDraft = "";
+  updateNoteSearchPlaceholder(false);
 });
 
 notesSearchCaseButton?.addEventListener("click", () => {
@@ -5657,6 +5697,86 @@ function setNoteSearchActive(active) {
 
 function getNoteSearchLabel(key, fallback) {
   return i18next.isInitialized ? i18next.t(`notePanel.${key}`) : fallback;
+}
+
+function getNoteSearchBasePlaceholder() {
+  return getNoteSearchLabel("search", "Search");
+}
+
+function updateNoteSearchPlaceholder(focused = document.activeElement === notesSearchInput) {
+  if (!notesSearchInput || !notesSearchPlaceholder) return;
+  const base = getNoteSearchBasePlaceholder();
+  notesSearchInput.placeholder = "";
+  notesSearchPlaceholder.classList.toggle("hidden", Boolean(notesSearchInput.value));
+  notesSearchPlaceholder.textContent = "";
+
+  if (!focused || !noteSearchHistory.length) {
+    notesSearchPlaceholder.textContent = base;
+    return;
+  }
+
+  const symbol = document.createElement("span");
+  symbol.className = "notes-search-history-symbol";
+  symbol.textContent = "\u21c5";
+
+  notesSearchPlaceholder.append(
+    document.createTextNode(`${base} (`),
+    symbol,
+    document.createTextNode(` ${getNoteSearchLabel("historyHint", "for history")})`),
+  );
+}
+
+function addNoteSearchHistory(value) {
+  const entry = String(value || "");
+  if (!entry) return;
+  noteSearchHistory = noteSearchHistory.filter((item) => item !== entry);
+  noteSearchHistory.push(entry);
+  if (noteSearchHistory.length > NOTE_SEARCH_HISTORY_LIMIT) {
+    noteSearchHistory = noteSearchHistory.slice(-NOTE_SEARCH_HISTORY_LIMIT);
+  }
+  noteSearchHistoryIndex = -1;
+  updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
+}
+
+function setNoteSearchInputValue(value) {
+  if (!notesSearchInput) return;
+  notesSearchInput.value = value;
+  notesSearchInput.setSelectionRange(value.length, value.length);
+  updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
+  noteSearchState.dismissedMatches.clear();
+  if (!value) {
+    clearNoteSearchResults();
+    return;
+  }
+  setNoteSearchActive(true);
+  scheduleNoteSearch();
+}
+
+function showNoteSearchHistoryValue(direction) {
+  if (!notesSearchInput || !noteSearchHistory.length) return false;
+
+  if (direction < 0) {
+    if (noteSearchHistoryIndex === -1) {
+      noteSearchHistoryDraft = notesSearchInput.value;
+      noteSearchHistoryIndex = noteSearchHistory.length - 1;
+    } else {
+      noteSearchHistoryIndex = Math.max(0, noteSearchHistoryIndex - 1);
+    }
+    setNoteSearchInputValue(noteSearchHistory[noteSearchHistoryIndex] || "");
+    return true;
+  }
+
+  if (noteSearchHistoryIndex === -1) return false;
+  if (noteSearchHistoryIndex >= noteSearchHistory.length - 1) {
+    noteSearchHistoryIndex = -1;
+    setNoteSearchInputValue(noteSearchHistoryDraft);
+    noteSearchHistoryDraft = "";
+    return true;
+  }
+
+  noteSearchHistoryIndex++;
+  setNoteSearchInputValue(noteSearchHistory[noteSearchHistoryIndex] || "");
+  return true;
 }
 
 function setNoteSearchButtonLabel(button, labelKey, fallback, shortcut) {

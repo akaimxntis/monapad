@@ -60,7 +60,7 @@
     "pageCopied": "Copied!"
   },
   "autosave": {
-    "restoreMessage": "Unsaved changes were found for \"{{name}}\". Restore them?",
+    "restoreMessage": "Unsaved changes were found for \"{{name}}\".\nRestore them?",
     "restore": "Restore",
     "discard": "Discard"
   },
@@ -102,6 +102,7 @@
     "matchWholeWord": "Match Whole Word",
     "useRegex": "Use Regular Expression",
     "dismiss": "Dismiss",
+    "historyHint": "for history",
     "searching": "Searching...",
     "noResults": "No results found",
     "searchFailed": "Search failed",

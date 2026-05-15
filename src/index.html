@@ -779,7 +779,6 @@
       .tab .name {
         flex: 1 1 auto;
         min-width: 0;
-        margin-left: -3px;
         overflow: hidden;
         white-space: nowrap;
         text-decoration: none;
@@ -1102,6 +1101,9 @@
         text-overflow: ellipsis;
         max-width: 100%;
         word-break: break-word;
+      }
+      #autosave-restore-message {
+        white-space: pre-line;
       }
 
       #confirm-save .confirm-buttons {
@@ -1482,7 +1484,28 @@
       }
       #notes-search {
         width: 100%;
-        padding-right: 73px;
+        padding-right: 70px;
+      }
+      #notes-search-placeholder {
+        position: absolute;
+        display: flex;
+        align-items: center;
+        left: 8px;
+        right: 70px;
+        height: 26px;
+        line-height: 26px;
+        color: var(--grayOut);
+        font: inherit;
+        font-size: 14px;
+        overflow: hidden;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+      #notes-search-placeholder.hidden {
+        display: none;
+      }
+      .notes-search-history-symbol {
+        font-family: "Figtree", sans-serif;
       }
       #notes-search-actions {
         position: absolute;
@@ -1491,7 +1514,7 @@
         height: 26px;
         display: flex;
         align-items: center;
-        gap: 3px;
+        gap: 2px;
         pointer-events: auto;
       }
       .notes-search-toggle {
@@ -2242,7 +2265,8 @@
         </button>
         <div id="notes-panel-tools">
           <div id="notes-search-wrap">
-            <input id="notes-search" type="text" placeholder="Search" spellcheck="false" />
+            <input id="notes-search" type="text" placeholder="" spellcheck="false" />
+            <span id="notes-search-placeholder" aria-hidden="true"></span>
             <div id="notes-search-actions" aria-hidden="false">
               <button
                 class="notes-search-toggle codicon codicon-case-sensitive"

@@ -60,7 +60,7 @@
     "pageCopied": "コピーしました！"
   },
   "autosave": {
-    "restoreMessage": "\"{{name}}\" に保存されていない変更があります。復元しますか？",
+    "restoreMessage": "\"{{name}}\" に保存されていない変更があります。\n復元しますか？",
     "restore": "復元",
     "discard": "破棄"
   },
@@ -137,6 +137,7 @@
     "matchWholeWord": "単語単位で検索",
     "useRegex": "正規表現を使用",
     "dismiss": "非表示",
+    "historyHint": "で履歴",
     "searching": "検索中...",
     "noResults": "検索結果はありません",
     "searchFailed": "検索に失敗しました",
