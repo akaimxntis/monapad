@@ -1469,6 +1469,69 @@
       #notes-search::placeholder {
         color: var(--grayOut);
       }
+      #notes-search-wrap {
+        flex: 1;
+        min-width: 0;
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+      #notes-search {
+        width: 100%;
+        padding-right: 73px;
+      }
+      #notes-search-actions {
+        position: absolute;
+        top: 0;
+        right: 3px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        pointer-events: auto;
+      }
+      .notes-search-toggle {
+        width: 20px;
+        height: 20px;
+        border: none;
+        border-radius: 3px;
+        padding: 0;
+        background: transparent;
+        color: var(--grayOut);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .notes-search-toggle.codicon[class*="codicon-"] {
+        font-size: 16px;
+        line-height: 1;
+      }
+      .codicon.codicon-case-sensitive::before {
+        content: "\eab1";
+      }
+      .codicon.codicon-whole-word::before {
+        content: "\eb7e";
+      }
+      .codicon.codicon-regex::before {
+        content: "\eb38";
+      }
+      .codicon.codicon-chevron-down::before {
+        content: "\eab4";
+      }
+      .codicon.codicon-close::before {
+        content: "\ea76";
+      }
+      .notes-search-toggle:hover,
+      .notes-search-toggle.active {
+        background: var(--color3);
+        color: var(--editorText);
+      }
+      .notes-search-toggle.active {
+        background: color-mix(in srgb, var(--highlight) 25%, transparent);
+        outline: 1px solid var(--highlight);
+      }
       #notes-add {
         display: flex;
         flex-shrink: 0;
@@ -1487,6 +1550,184 @@
       }
       #notes-list {
         padding: 0 0 115px 0;
+      }
+      body.notes-search-active #notes-list {
+        display: none;
+      }
+      #notes-search-results {
+        display: none;
+        padding: 0 0 115px 0;
+        font-size: 13px;
+        color: var(--editorText);
+      }
+      body.notes-search-active #notes-search-results {
+        display: block;
+      }
+      .notes-search-summary {
+        height: 24px;
+        line-height: 24px;
+        padding: 0 10px 0 20px;
+        color: var(--grayOut);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        box-sizing: border-box;
+      }
+      .notes-search-message {
+        padding: 12px 20px;
+        color: var(--grayOut);
+        line-height: 1.4;
+      }
+      .notes-search-file {
+        display: flex;
+        align-items: center;
+        height: 28px;
+        padding: 0 8px 0 10px;
+        box-sizing: border-box;
+        cursor: default;
+      }
+      .notes-search-file:hover,
+      .notes-search-match:hover {
+        background: var(--color3);
+      }
+      .notes-search-twistie {
+        flex: 0 0 16px;
+        width: 16px;
+        margin-right: 2px;
+        color: var(--grayOut);
+        font-size: 10px;
+        line-height: 1;
+      }
+      .notes-search-file-title {
+        min-width: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .notes-search-file:hover .notes-search-count {
+        display: none;
+      }
+      .notes-search-file .notes-search-file-dismiss.codicon[class*="codicon-"] {
+        flex: 0 0 20px;
+        width: 20px;
+        height: 20px;
+        border: none;
+        border-radius: 3px;
+        padding: 0;
+        background: transparent;
+        color: var(--grayOut);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .notes-search-file:hover .notes-search-file-dismiss.codicon[class*="codicon-"] {
+        display: flex;
+      }
+      .notes-search-file-dismiss:hover {
+        color: var(--editorText);
+      }
+      .notes-search-file .notes-search-file-dismiss.codicon[class*="codicon-"]:hover {
+        color: var(--editorText);
+      }
+      .notes-search-count {
+        flex: 0 0 auto;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 6px;
+        border-radius: 9px;
+        box-sizing: border-box;
+        background: var(--vscode-badge-background, var(--color3));
+        color: var(--editorText);
+        font-size: 11px;
+        line-height: 18px;
+        text-align: center;
+      }
+      .notes-search-match {
+        position: relative;
+        display: flex;
+        align-items: center;
+        height: 22px;
+        padding: 0 8px 0 28px;
+        box-sizing: border-box;
+        cursor: default;
+        color: var(--editorText);
+      }
+      .notes-search-match:hover {
+        padding-right: 28px;
+      }
+      .notes-search-preview {
+        min-width: 0;
+        flex: 1 1 auto;
+        display: flex;
+        align-items: baseline;
+        overflow: hidden;
+        white-space: nowrap;
+        font-family: "Iosevka", "Migu 1M", monospace;
+        font-size: 12px;
+      }
+      .notes-search-before {
+        flex: 0 0 auto;
+        overflow: visible;
+        white-space: pre;
+      }
+      .notes-search-hit {
+        flex: 0 0 auto;
+        overflow: visible;
+        white-space: pre;
+        background: var(
+          --vscode-searchEditor-findMatchBackground,
+          var(--vscode-editor-findMatchHighlightBackground, var(--vscode-editor-findMatchBackground))
+        );
+        color: var(--editorText);
+      }
+      .notes-search-after {
+        min-width: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+        white-space: pre;
+        text-overflow: ellipsis;
+      }
+      .notes-search-match .notes-search-dismiss.codicon[class*="codicon-"] {
+        position: absolute;
+        top: 1px;
+        right: 8px;
+        width: 20px;
+        height: 20px;
+        border: none;
+        border-radius: 3px;
+        padding: 0;
+        background: transparent;
+        color: var(--grayOut);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+      }
+      .notes-search-match:hover .notes-search-dismiss.codicon[class*="codicon-"] {
+        display: flex;
+      }
+      .notes-search-dismiss:hover {
+        color: var(--editorText);
+      }
+      .notes-search-match .notes-search-dismiss.codicon[class*="codicon-"]:hover {
+        color: var(--editorText);
+      }
+      .notes-search-dismiss.codicon[class*="codicon-"],
+      .notes-search-file-dismiss.codicon[class*="codicon-"],
+      .notes-search-twistie.codicon[class*="codicon-"] {
+        font-size: 16px;
+        line-height: 1;
+      }
+      .notes-search-file.collapsed + .notes-search-match-group {
+        display: none;
+      }
+      .notes-search-file.collapsed .notes-search-twistie {
+        transform: rotate(-90deg);
+      }
+      #notes-search.invalid {
+        outline: 1px solid var(--vscode-inputValidation-errorBorder, var(--warn));
       }
       .note-list-item {
         position: relative;
@@ -1544,17 +1785,19 @@
       .note-pin-button svg {
         width: 18px;
         height: 18px;
-        transition: fill 120ms ease;
-        fill: color-mix(in srgb, var(--editorText) 0%, transparent);
       }
       .note-list-item.pinned .note-pin-button svg {
-        fill: var(--editorText);
-      }
-      #notes-list:not(:has(.note-list-item.dragging)) .note-pin-button:hover svg,
-      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.pinned .note-pin-button:hover svg {
-        fill: color-mix(in srgb, var(--editorText) 50%, transparent);
+        fill: var(--grayOut);
+        stroke: var(--grayOut);
       }
       .note-pin-button svg path {
+        stroke: var(--grayOut);
+      }
+      #notes-list:not(:has(.note-list-item.dragging)) .note-pin-button:hover svg path {
+        stroke: var(--editorText);
+      }
+      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.pinned .note-pin-button:hover svg {
+        fill: var(--editorText);
         stroke: var(--editorText);
       }
       #notes-panel-menu-button {
@@ -1994,7 +2237,29 @@
           </svg>
         </button>
         <div id="notes-panel-tools">
-          <input id="notes-search" type="text" placeholder="Search" spellcheck="false" />
+          <div id="notes-search-wrap">
+            <input id="notes-search" type="text" placeholder="Search" spellcheck="false" />
+            <div id="notes-search-actions" aria-hidden="false">
+              <button
+                class="notes-search-toggle codicon codicon-case-sensitive"
+                id="notes-search-case"
+                type="button"
+                aria-label="Match Case"
+              ></button>
+              <button
+                class="notes-search-toggle codicon codicon-whole-word"
+                id="notes-search-word"
+                type="button"
+                aria-label="Match Whole Word"
+              ></button>
+              <button
+                class="notes-search-toggle codicon codicon-regex"
+                id="notes-search-regex"
+                type="button"
+                aria-label="Use Regular Expression"
+              ></button>
+            </div>
+          </div>
           <button id="notes-add" aria-label="New Note">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10.23 10.23" width="13" height="13">
               <line
@@ -2021,6 +2286,7 @@
           </button>
         </div>
         <div id="notes-list"></div>
+        <div id="notes-search-results"></div>
       </aside>
 
       <!-- note context menu -->

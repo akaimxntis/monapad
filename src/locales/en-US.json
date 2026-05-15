@@ -97,7 +97,15 @@
     "convertToFile": "Convert to File",
     "delete": "Delete",
     "pinNote": "Pin Note",
-    "unpinNote": "Unpin Note"
+    "unpinNote": "Unpin Note",
+    "matchCase": "Match Case",
+    "matchWholeWord": "Match Whole Word",
+    "useRegex": "Use Regular Expression",
+    "dismiss": "Dismiss",
+    "searching": "Searching...",
+    "noResults": "No results found",
+    "searchFailed": "Search failed",
+    "searchSummary": "{{count}} results in {{notes}} notes"
   },
   "settings": {
     "font": "Font",

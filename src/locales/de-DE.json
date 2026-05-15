@@ -132,6 +132,14 @@
     "convertToFile": "In Datei umwandeln",
     "delete": "Löschen",
     "pinNote": "Notiz anheften",
-    "unpinNote": "Anheftung lösen"
+    "unpinNote": "Anheftung lösen",
+    "matchCase": "Groß-/Kleinschreibung beachten",
+    "matchWholeWord": "Ganzes Wort suchen",
+    "useRegex": "Regulären Ausdruck verwenden",
+    "dismiss": "Ausblenden",
+    "searching": "Suche...",
+    "noResults": "Keine Ergebnisse gefunden",
+    "searchFailed": "Suche fehlgeschlagen",
+    "searchSummary": "{{count}} Ergebnisse in {{notes}} Notizen"
   }
 }

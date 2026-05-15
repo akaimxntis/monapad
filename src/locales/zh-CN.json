@@ -132,6 +132,14 @@
     "convertToFile": "转换为文件",
     "delete": "删除",
     "pinNote": "置顶笔记",
-    "unpinNote": "取消置顶"
+    "unpinNote": "取消置顶",
+    "matchCase": "区分大小写",
+    "matchWholeWord": "全字匹配",
+    "useRegex": "使用正则表达式",
+    "dismiss": "隐藏",
+    "searching": "正在搜索...",
+    "noResults": "未找到结果",
+    "searchFailed": "搜索失败",
+    "searchSummary": "在 {{notes}} 条笔记中找到 {{count}} 个结果"
   }
 }

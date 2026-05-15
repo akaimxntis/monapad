@@ -132,6 +132,14 @@
     "convertToFile": "ファイルに変換",
     "delete": "削除",
     "pinNote": "ピン留め",
-    "unpinNote": "ピン留めを解除"
+    "unpinNote": "ピン留めを解除",
+    "matchCase": "大文字と小文字を区別",
+    "matchWholeWord": "単語単位で検索",
+    "useRegex": "正規表現を使用",
+    "dismiss": "非表示",
+    "searching": "検索中...",
+    "noResults": "検索結果はありません",
+    "searchFailed": "検索に失敗しました",
+    "searchSummary": "{{count}} 件の結果 / {{notes}} ノート"
   }
 }

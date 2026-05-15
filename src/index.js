@@ -1,6 +1,7 @@
 import * as monaco from "monaco-editor";
 import { StandaloneServices } from "monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js";
 import { INotificationService } from "monaco-editor/esm/vs/platform/notification/common/notification.js";
+import "monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css";
 import Choices from "choices.js";
 import "choices.js/public/assets/styles/choices.min.css";
 import "./custom-choices.css";
@@ -31,6 +32,11 @@ const notesPanel = document.getElementById("notes-panel");
 const notesPanelClose = document.getElementById("notes-panel-close");
 const notesPanelMenuButton = document.getElementById("notes-panel-menu-button");
 const notesAddButton = document.getElementById("notes-add");
+const notesSearchInput = document.getElementById("notes-search");
+const notesSearchResults = document.getElementById("notes-search-results");
+const notesSearchCaseButton = document.getElementById("notes-search-case");
+const notesSearchWordButton = document.getElementById("notes-search-word");
+const notesSearchRegexButton = document.getElementById("notes-search-regex");
 const notesList = document.getElementById("notes-list");
 const noteContextMenu = document.getElementById("note-context-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
@@ -183,6 +189,30 @@ let dragCounter = 0;
 let rightClickedTab = null;
 let rightClickedNoteId = null;
 let notesIndexCache = [];
+const NOTE_SEARCH_DEBOUNCE_MS = 120;
+const NOTE_SEARCH_MAX_MATCHES = 10000;
+const NOTE_SEARCH_WORD_SEPARATORS = "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?";
+const NOTE_SEARCH_PREVIEW_MAX = 1000;
+const NOTE_SEARCH_HOVER_MAX = 100;
+const NOTE_SEARCH_BEFORE_MAX_RATIO = 0.7;
+const NOTE_SEARCH_MATCH_MIN_RATIO = 0.3;
+let noteSearchTimer = null;
+let noteSearchSeq = 0;
+let noteSearchPreviewFrame = null;
+let noteSearchMeasureContext = null;
+let noteSearchPreviewObserver = null;
+let noteSearchVisiblePreviewRows = new Set();
+let noteSearchState = {
+  query: "",
+  matchCase: false,
+  wholeWord: false,
+  regex: false,
+  results: [],
+  totalMatches: 0,
+  totalNotes: 0,
+  dismissedMatches: new Set(),
+};
+const noteContentCache = new Map();
 const NOTE_PIN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/></svg>`;
 
 // watch only active tab, remove old watcher when tab switched (switchTab)
@@ -486,6 +516,7 @@ function updateMenuLabels() {
   // notes panel
   const notesSearch = document.getElementById("notes-search");
   if (notesSearch) notesSearch.placeholder = i18next.t("notePanel.search");
+  updateNoteSearchLabels();
   if (notesAddButton) {
     const newNoteLabel = i18next.t("notePanel.newNote");
     notesAddButton.setAttribute("aria-label", newNoteLabel);
@@ -2986,6 +3017,7 @@ function updateMenuPositions() {
 window.addEventListener("resize", () => {
   updateMenuPositions();
   updateTabsCompactClass();
+  scheduleNoteSearchPreviewUpdate();
 
   // update editor padding
   const editorHeight = editor.clientHeight;
@@ -5452,7 +5484,71 @@ async function renderNotesList() {
     item.addEventListener("mousedown", (e) => beginNoteListDrag(e, item));
     notesList.appendChild(item);
   }
+
+  if (isNoteSearchActive()) scheduleNoteSearch();
 }
+
+notesSearchInput?.addEventListener("input", () => {
+  noteSearchState.dismissedMatches.clear();
+  if (!getNoteSearchQuery()) {
+    clearNoteSearchResults();
+    return;
+  }
+  setNoteSearchActive(true);
+  scheduleNoteSearch();
+});
+
+notesSearchInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && getNoteSearchQuery()) {
+    e.preventDefault();
+    notesSearchInput.value = "";
+    clearNoteSearchResults();
+    return;
+  }
+
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const key = e.key.toLowerCase();
+  if (key === "c") {
+    e.preventDefault();
+    toggleNoteSearchOption("matchCase");
+  } else if (key === "w") {
+    e.preventDefault();
+    toggleNoteSearchOption("wholeWord");
+  } else if (key === "r") {
+    e.preventDefault();
+    toggleNoteSearchOption("regex");
+  }
+});
+
+notesSearchCaseButton?.addEventListener("click", () => {
+  toggleNoteSearchOption("matchCase");
+});
+
+notesSearchWordButton?.addEventListener("click", () => {
+  toggleNoteSearchOption("wholeWord");
+});
+
+notesSearchRegexButton?.addEventListener("click", () => {
+  toggleNoteSearchOption("regex");
+});
+document.addEventListener("keydown", (e) => {
+  if (!document.body.classList.contains("notes-panel-open") || document.activeElement === notesSearchInput) return;
+  const target = e.target instanceof Element ? e.target : document.activeElement;
+  if (target?.closest?.(".monaco-editor, .find-widget, .rename-box, .suggest-widget, .quick-input-widget")) return;
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const key = e.key.toLowerCase();
+  if (key === "c") {
+    e.preventDefault();
+    toggleNoteSearchOption("matchCase", false);
+  } else if (key === "w") {
+    e.preventDefault();
+    toggleNoteSearchOption("wholeWord", false);
+  } else if (key === "r") {
+    e.preventDefault();
+    toggleNoteSearchOption("regex", false);
+  }
+});
+updateNoteSearchToggleState();
 
 function showNoteContextMenu(e, noteId) {
   e.preventDefault();
@@ -5481,6 +5577,537 @@ async function getLiveNoteContent(noteId) {
   if (openTab) return openTab.model?.getValue() ?? openTab.content ?? "";
   const note = await window.electronAPI.readNote(noteId);
   return note?.exists ? note.content || "" : null;
+}
+
+function getNoteSearchQuery() {
+  return notesSearchInput?.value || "";
+}
+
+function isNoteSearchActive() {
+  return Boolean(getNoteSearchQuery());
+}
+
+function setNoteSearchActive(active) {
+  document.body.classList.toggle("notes-search-active", Boolean(active));
+}
+
+function getNoteSearchLabel(key, fallback) {
+  return i18next.isInitialized ? i18next.t(`notePanel.${key}`) : fallback;
+}
+
+function setNoteSearchButtonLabel(button, labelKey, fallback, shortcut) {
+  if (!button) return;
+  const label = `${getNoteSearchLabel(labelKey, fallback)} (${shortcut})`;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+}
+
+function updateNoteSearchLabels() {
+  setNoteSearchButtonLabel(notesSearchCaseButton, "matchCase", "Match Case", "Alt+C");
+  setNoteSearchButtonLabel(notesSearchWordButton, "matchWholeWord", "Match Whole Word", "Alt+W");
+  setNoteSearchButtonLabel(notesSearchRegexButton, "useRegex", "Use Regular Expression", "Alt+R");
+}
+
+function updateNoteSearchToggleState() {
+  updateNoteSearchLabels();
+  notesSearchCaseButton?.classList.toggle("active", noteSearchState.matchCase);
+  notesSearchCaseButton?.setAttribute("aria-pressed", String(noteSearchState.matchCase));
+  notesSearchWordButton?.classList.toggle("active", noteSearchState.wholeWord);
+  notesSearchWordButton?.setAttribute("aria-pressed", String(noteSearchState.wholeWord));
+  notesSearchRegexButton?.classList.toggle("active", noteSearchState.regex);
+  notesSearchRegexButton?.setAttribute("aria-pressed", String(noteSearchState.regex));
+}
+
+function toggleNoteSearchOption(option, focusInput = true) {
+  noteSearchState[option] = !noteSearchState[option];
+  noteSearchState.dismissedMatches.clear();
+  updateNoteSearchToggleState();
+  if (isNoteSearchActive()) scheduleNoteSearch();
+  if (focusInput) notesSearchInput?.focus();
+}
+
+function validateNoteSearchRegex(query) {
+  if (!noteSearchState.regex || !query) return null;
+  try {
+    new RegExp(query, "u");
+    return null;
+  } catch (error) {
+    return error?.message || "Invalid regular expression";
+  }
+}
+
+function scheduleNoteSearch() {
+  if (noteSearchTimer) clearTimeout(noteSearchTimer);
+  noteSearchTimer = setTimeout(() => {
+    noteSearchTimer = null;
+    runNoteSearch();
+  }, NOTE_SEARCH_DEBOUNCE_MS);
+}
+
+function clearNoteSearchResults() {
+  noteSearchSeq++;
+  resetNoteSearchPreviewObserver();
+  noteSearchState.results = [];
+  noteSearchState.totalMatches = 0;
+  noteSearchState.totalNotes = 0;
+  noteSearchState.dismissedMatches.clear();
+  notesSearchInput?.classList.remove("invalid");
+  if (notesSearchResults) notesSearchResults.innerHTML = "";
+  setNoteSearchActive(false);
+}
+
+function normalizeSearchPreviewText(text) {
+  return String(text || "").replace(/\s+/g, " ");
+}
+
+function escapeSearchPreview(text, maxLength = NOTE_SEARCH_PREVIEW_MAX) {
+  const value = normalizeSearchPreviewText(text);
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function createNoteSearchPreview(model, match) {
+  const range = match.range;
+  const line = model.getLineContent(range.startLineNumber);
+  const beforeFull = line.slice(0, range.startColumn - 1);
+  const inside = line.slice(range.startColumn - 1, Math.max(range.startColumn - 1, range.endColumn - 1));
+  const after = line.slice(range.endColumn - 1);
+  return {
+    fullBefore: normalizeSearchPreviewText(beforeFull).slice(-NOTE_SEARCH_PREVIEW_MAX),
+    inside: escapeSearchPreview(inside || match.matches?.[0] || "", NOTE_SEARCH_PREVIEW_MAX),
+    after: escapeSearchPreview(after, NOTE_SEARCH_PREVIEW_MAX),
+    fullLine: line,
+  };
+}
+
+function getNoteSearchMeasureContext() {
+  if (!noteSearchMeasureContext) {
+    const canvas = document.createElement("canvas");
+    noteSearchMeasureContext = canvas.getContext("2d");
+  }
+  return noteSearchMeasureContext;
+}
+
+function getNoteSearchPreviewFont(previewElement) {
+  const style = window.getComputedStyle(previewElement);
+  return `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+}
+
+function measureNoteSearchText(text, font) {
+  const context = getNoteSearchMeasureContext();
+  if (!context) return String(text || "").length * 8;
+  context.font = font;
+  return context.measureText(String(text || "")).width;
+}
+
+function fitNoteSearchTextEnd(text, maxWidth, font, prefix = "") {
+  const value = String(text || "");
+  if (!value) return "";
+  if (measureNoteSearchText(value, font) <= maxWidth) return value;
+
+  const prefixWidth = measureNoteSearchText(prefix, font);
+  const targetWidth = Math.max(0, maxWidth - prefixWidth);
+  let low = 0;
+  let high = value.length;
+
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const suffix = value.slice(value.length - mid);
+    if (measureNoteSearchText(suffix, font) <= targetWidth) low = mid;
+    else high = mid - 1;
+  }
+
+  return `${prefix}${value.slice(value.length - low)}`;
+}
+
+function fitNoteSearchTextStart(text, maxWidth, font, suffix = "") {
+  const value = String(text || "");
+  if (!value) return "";
+  if (measureNoteSearchText(value, font) <= maxWidth) return value;
+
+  const suffixWidth = measureNoteSearchText(suffix, font);
+  const targetWidth = Math.max(0, maxWidth - suffixWidth);
+  let low = 0;
+  let high = value.length;
+
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    const prefix = value.slice(0, mid);
+    if (measureNoteSearchText(prefix, font) <= targetWidth) low = mid;
+    else high = mid - 1;
+  }
+
+  return `${value.slice(0, low)}${suffix}`;
+}
+
+function updateNoteSearchPreviewElement(row) {
+  const preview = row?.querySelector?.(".notes-search-preview");
+  const before = row?.querySelector?.(".notes-search-before");
+  const hit = row?.querySelector?.(".notes-search-hit");
+  const after = row?.querySelector?.(".notes-search-after");
+  const matchId = row?.dataset?.matchId;
+  if (!preview || !before || !hit || !after || !matchId) return;
+
+  const match = row.noteSearchMatch || noteSearchState.results.flatMap((result) => result.matches).find((item) => item.id === matchId);
+  if (!match) return;
+
+  const width = preview.clientWidth;
+  if (!width) return;
+  const font = getNoteSearchPreviewFont(preview);
+  const beforeText = match.preview.fullBefore;
+  const hitText = match.preview.inside;
+  const afterText = match.preview.after;
+  const beforeWidth = measureNoteSearchText(beforeText, font);
+  const hitWidth = measureNoteSearchText(hitText, font);
+  const ellipsis = "...";
+
+  const beforeLimit = width * NOTE_SEARCH_BEFORE_MAX_RATIO;
+  const minMatchWidth = Math.min(hitWidth, width * NOTE_SEARCH_MATCH_MIN_RATIO);
+  const shouldShiftWindow = beforeWidth + minMatchWidth > width;
+  const beforeTargetWidth = shouldShiftWindow ? beforeLimit : Math.min(beforeWidth, width);
+  const beforeDisplay = fitNoteSearchTextEnd(beforeText, beforeTargetWidth, font, shouldShiftWindow ? ellipsis : "");
+  const remainingWidth = Math.max(0, width - measureNoteSearchText(beforeDisplay, font));
+  const hitDisplay = fitNoteSearchTextStart(hitText, remainingWidth, font, ellipsis);
+  const hitComplete = hitDisplay === hitText;
+
+  before.textContent = beforeDisplay;
+  hit.textContent = hitDisplay;
+  after.textContent = hitComplete ? afterText : "";
+}
+
+function updateNoteSearchPreviewElements() {
+  if (!notesSearchResults) return;
+  if (noteSearchVisiblePreviewRows.size) {
+    noteSearchVisiblePreviewRows.forEach((row) => updateNoteSearchPreviewElement(row));
+    return;
+  }
+  notesSearchResults.querySelectorAll(".notes-search-match").forEach((row) => updateNoteSearchPreviewElement(row));
+}
+
+function scheduleNoteSearchPreviewUpdate() {
+  if (noteSearchPreviewFrame !== null) return;
+  noteSearchPreviewFrame = requestAnimationFrame(() => {
+    noteSearchPreviewFrame = null;
+    updateNoteSearchPreviewElements();
+  });
+}
+
+function resetNoteSearchPreviewObserver() {
+  if (noteSearchPreviewFrame !== null) {
+    cancelAnimationFrame(noteSearchPreviewFrame);
+    noteSearchPreviewFrame = null;
+  }
+  if (noteSearchPreviewObserver) {
+    noteSearchPreviewObserver.disconnect();
+    noteSearchPreviewObserver = null;
+  }
+  noteSearchVisiblePreviewRows.clear();
+}
+
+function getNoteSearchPreviewObserver() {
+  if (!("IntersectionObserver" in window) || !notesPanel) return null;
+  if (!noteSearchPreviewObserver) {
+    noteSearchPreviewObserver = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const row = entry.target;
+          if (!entry.isIntersecting) {
+            noteSearchVisiblePreviewRows.delete(row);
+            continue;
+          }
+          noteSearchVisiblePreviewRows.add(row);
+          updateNoteSearchPreviewElement(row);
+        }
+      },
+      {
+        root: notesPanel,
+        rootMargin: "220px 0px",
+        threshold: 0,
+      },
+    );
+  }
+  return noteSearchPreviewObserver;
+}
+
+function observeNoteSearchPreviewRow(row) {
+  const observer = getNoteSearchPreviewObserver();
+  if (!observer) {
+    noteSearchVisiblePreviewRows.add(row);
+    updateNoteSearchPreviewElement(row);
+    return;
+  }
+  observer.observe(row);
+}
+
+function getNoteSearchMatchId(noteId, range, query) {
+  return `${noteId}:${range.startLineNumber}:${range.startColumn}:${range.endLineNumber}:${range.endColumn}:${query}`;
+}
+
+function searchNoteContent(note, content, query) {
+  const model = monaco.editor.createModel(content || "", "monapad");
+  try {
+    const matches = model.findMatches(
+      query,
+      model.getFullModelRange(),
+      noteSearchState.regex,
+      noteSearchState.matchCase,
+      noteSearchState.wholeWord ? NOTE_SEARCH_WORD_SEPARATORS : null,
+      false,
+      NOTE_SEARCH_MAX_MATCHES,
+    );
+
+    return matches.map((match) => {
+      const range = match.range;
+      return {
+        id: getNoteSearchMatchId(note.id, range, query),
+        noteId: note.id,
+        lineNumber: range.startLineNumber,
+        range,
+        preview: createNoteSearchPreview(model, match),
+      };
+    });
+  } finally {
+    model.dispose();
+  }
+}
+
+async function getSearchableNoteContent(note) {
+  const openTab = tabData.find((tab) => tab.isNote && tab.noteId === note.id);
+  if (openTab) {
+    const content = openTab.model?.getValue() ?? openTab.content ?? "";
+    noteContentCache.set(note.id, { updatedAt: openTab.noteUpdatedAt || note.updatedAt || 0, content });
+    return content;
+  }
+
+  const cached = noteContentCache.get(note.id);
+  if (cached && cached.updatedAt === (note.updatedAt || 0)) return cached.content;
+
+  const fullNote = await window.electronAPI.readNote(note.id);
+  if (!fullNote?.exists) return null;
+
+  const content = fullNote.content || "";
+  noteContentCache.set(note.id, { updatedAt: fullNote.meta?.updatedAt || note.updatedAt || 0, content });
+  return content;
+}
+
+async function runNoteSearch() {
+  const query = getNoteSearchQuery();
+  noteSearchState.query = query;
+  updateNoteSearchToggleState();
+
+  if (!query) {
+    clearNoteSearchResults();
+    return;
+  }
+
+  setNoteSearchActive(true);
+  const seq = ++noteSearchSeq;
+  const regexError = validateNoteSearchRegex(query);
+  notesSearchInput?.classList.toggle("invalid", Boolean(regexError));
+  if (regexError) {
+    renderNoteSearchMessage(regexError);
+    return;
+  }
+
+  renderNoteSearchMessage(getNoteSearchLabel("searching", "Searching..."));
+
+  try {
+    const notes = sortNotesForPanel(Array.isArray(notesIndexCache) && notesIndexCache.length ? notesIndexCache : await window.electronAPI.listNotes());
+    const results = [];
+    let totalMatches = 0;
+
+    await Promise.all(
+      notes.map(async (note) => {
+        if (!note?.id || note.contentBytes === 0) return;
+        const content = await getSearchableNoteContent(note);
+        if (seq !== noteSearchSeq || content === null) return;
+
+        const matches = searchNoteContent(note, content, query).filter((match) => !noteSearchState.dismissedMatches.has(match.id));
+        if (!matches.length) return;
+
+        totalMatches += matches.length;
+        results.push({
+          noteId: note.id,
+          title: truncateNoteTitle(note.title || getNoteTitleFromContent(content)),
+          matches,
+        });
+      }),
+    );
+
+    if (seq !== noteSearchSeq) return;
+    results.sort((a, b) => {
+      const aIndex = notes.findIndex((note) => note.id === a.noteId);
+      const bIndex = notes.findIndex((note) => note.id === b.noteId);
+      return aIndex - bIndex;
+    });
+
+    noteSearchState.results = results;
+    noteSearchState.totalMatches = totalMatches;
+    noteSearchState.totalNotes = results.length;
+    renderNoteSearchResults();
+  } catch (error) {
+    if (seq !== noteSearchSeq) return;
+    renderNoteSearchMessage(error?.message || getNoteSearchLabel("searchFailed", "Search failed"));
+  }
+}
+
+function renderNoteSearchMessage(message) {
+  if (!notesSearchResults) return;
+  resetNoteSearchPreviewObserver();
+  notesSearchResults.innerHTML = "";
+  const item = document.createElement("div");
+  item.className = "notes-search-message";
+  item.textContent = message;
+  notesSearchResults.appendChild(item);
+}
+
+function renderNoteSearchResults() {
+  if (!notesSearchResults) return;
+  resetNoteSearchPreviewObserver();
+  notesSearchResults.innerHTML = "";
+
+  if (!noteSearchState.totalMatches) {
+    renderNoteSearchMessage(getNoteSearchLabel("noResults", "No results found"));
+    return;
+  }
+
+  const summary = document.createElement("div");
+  summary.className = "notes-search-summary";
+  summary.textContent = i18next.isInitialized
+    ? i18next.t("notePanel.searchSummary", {
+        count: noteSearchState.totalMatches,
+        notes: noteSearchState.totalNotes,
+      })
+    : `${noteSearchState.totalMatches} results in ${noteSearchState.totalNotes} notes`;
+  notesSearchResults.appendChild(summary);
+
+  for (const result of noteSearchState.results) {
+    const fileRow = document.createElement("div");
+    fileRow.className = "notes-search-file";
+    fileRow.dataset.noteId = result.noteId;
+
+    const twistie = document.createElement("span");
+    twistie.className = "notes-search-twistie codicon codicon-chevron-down";
+
+    const title = document.createElement("span");
+    title.className = "notes-search-file-title";
+    title.textContent = result.title;
+    title.title = result.title;
+
+    const count = document.createElement("span");
+    count.className = "notes-search-count";
+    count.textContent = result.matches.length;
+
+    const dismiss = document.createElement("button");
+    dismiss.className = "notes-search-file-dismiss codicon codicon-close";
+    dismiss.type = "button";
+    dismiss.title = getNoteSearchLabel("dismiss", "Dismiss");
+    dismiss.setAttribute("aria-label", getNoteSearchLabel("dismiss", "Dismiss"));
+    dismiss.addEventListener("click", (e) => {
+      e.stopPropagation();
+      dismissNoteSearchFile(result.noteId);
+    });
+
+    const matchGroup = document.createElement("div");
+    matchGroup.className = "notes-search-match-group";
+    const rowsToObserve = [];
+
+    fileRow.append(twistie, title, count, dismiss);
+    fileRow.addEventListener("click", () => {
+      fileRow.classList.toggle("collapsed");
+    });
+
+    for (const match of result.matches) {
+      const matchRow = createNoteSearchMatchElement(match);
+      matchGroup.appendChild(matchRow);
+      rowsToObserve.push(matchRow);
+    }
+
+    notesSearchResults.append(fileRow, matchGroup);
+    rowsToObserve.forEach((row) => observeNoteSearchPreviewRow(row));
+  }
+}
+
+function createNoteSearchMatchElement(match) {
+  const row = document.createElement("div");
+  row.className = "notes-search-match";
+  row.dataset.noteId = match.noteId;
+  row.dataset.matchId = match.id;
+  row.noteSearchMatch = match;
+  row.title = `${match.lineNumber}: ${escapeSearchPreview(match.preview.fullLine, NOTE_SEARCH_HOVER_MAX)}`;
+
+  const preview = document.createElement("span");
+  preview.className = "notes-search-preview";
+
+  const before = document.createElement("span");
+  before.className = "notes-search-before";
+  before.textContent = match.preview.fullBefore;
+  const hit = document.createElement("span");
+  hit.className = "notes-search-hit";
+  hit.textContent = match.preview.inside;
+  const after = document.createElement("span");
+  after.className = "notes-search-after";
+  after.textContent = match.preview.after;
+  preview.append(before, hit, after);
+
+  const dismiss = document.createElement("button");
+  dismiss.className = "notes-search-dismiss codicon codicon-close";
+  dismiss.type = "button";
+  dismiss.title = getNoteSearchLabel("dismiss", "Dismiss");
+  dismiss.setAttribute("aria-label", getNoteSearchLabel("dismiss", "Dismiss"));
+  dismiss.addEventListener("click", (e) => {
+    e.stopPropagation();
+    dismissNoteSearchMatch(match.id);
+  });
+
+  row.append(preview, dismiss);
+  row.addEventListener("click", async () => {
+    await openNoteSearchMatch(match, { preview: true });
+  });
+  row.addEventListener("dblclick", async () => {
+    await openNoteSearchMatch(match, { preview: false });
+  });
+  row.addEventListener("auxclick", async (e) => {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    await openNoteSearchMatch(match, { preview: false });
+  });
+  return row;
+}
+
+function dismissNoteSearchMatch(matchId) {
+  noteSearchState.dismissedMatches.add(matchId);
+  for (const result of noteSearchState.results) {
+    result.matches = result.matches.filter((match) => match.id !== matchId);
+  }
+  noteSearchState.results = noteSearchState.results.filter((result) => result.matches.length);
+  noteSearchState.totalMatches = noteSearchState.results.reduce((total, result) => total + result.matches.length, 0);
+  noteSearchState.totalNotes = noteSearchState.results.length;
+  renderNoteSearchResults();
+}
+
+function dismissNoteSearchFile(noteId) {
+  const result = noteSearchState.results.find((item) => item.noteId === noteId);
+  if (!result) return;
+  result.matches.forEach((match) => noteSearchState.dismissedMatches.add(match.id));
+  noteSearchState.results = noteSearchState.results.filter((item) => item.noteId !== noteId);
+  noteSearchState.totalMatches = noteSearchState.results.reduce((total, item) => total + item.matches.length, 0);
+  noteSearchState.totalNotes = noteSearchState.results.length;
+  renderNoteSearchResults();
+}
+
+async function openNoteSearchMatch(match, options = {}) {
+  const tab = await openNoteById(match.noteId, { preview: options.preview !== false });
+  if (!tab || !monacoEditor) return;
+
+  const range = new monaco.Range(
+    match.range.startLineNumber,
+    match.range.startColumn,
+    match.range.endLineNumber,
+    match.range.endColumn,
+  );
+  monacoEditor.setSelection(range);
+  monacoEditor.revealRangeInCenterIfOutsideViewport(range);
 }
 
 async function deleteNoteEverywhere(noteId, { trash = false } = {}) {
