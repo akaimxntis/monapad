@@ -29,6 +29,7 @@
     "print": "印刷",
     "settings": "設定",
     "notes": "ノート",
+    "sideBar": "サイドバー",
     "theme": "テーマ",
     "about": "バージョン情報",
     "onyx": "オニキス",
@@ -124,8 +125,10 @@
   },
   "notePanel": {
     "search": "検索",
+    "notesSection": "ノート",
+    "searchSection": "タブとノートを検索",
     "newNote": "新規ノート",
-    "closePanel": "ノートを閉じる",
+    "closePanel": "サイドバーを閉じる",
     "copyText": "全文コピー",
     "duplicate": "複製",
     "convertToUntitled": "無題に変換",
@@ -145,6 +148,6 @@
     "searching": "検索中...",
     "noResults": "検索結果はありません",
     "searchFailed": "検索に失敗しました",
-    "searchSummary": "{{count}} 件の結果 / {{notes}} ノート"
+    "searchSummary": "{{count}} 件の結果 / {{items}} 項目"
   }
 }

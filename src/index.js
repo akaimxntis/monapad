@@ -32,9 +32,13 @@ const notesPanel = document.getElementById("notes-panel");
 const notesPanelClose = document.getElementById("notes-panel-close");
 const notesPanelMenuButton = document.getElementById("notes-panel-menu-button");
 const notesAddButton = document.getElementById("notes-add");
+const notesListRefreshButton = document.getElementById("notes-list-refresh");
+const notesListHeading = document.getElementById("notes-list-heading");
+const notesSearchHeading = document.getElementById("notes-search-heading");
 const notesSearchInput = document.getElementById("notes-search");
 const notesSearchPlaceholder = document.getElementById("notes-search-placeholder");
 const notesSearchResults = document.getElementById("notes-search-results");
+const notesSearchResultsList = document.getElementById("notes-search-results-list");
 const notesSearchCaseButton = document.getElementById("notes-search-case");
 const notesSearchWordButton = document.getElementById("notes-search-word");
 const notesSearchRegexButton = document.getElementById("notes-search-regex");
@@ -204,12 +208,16 @@ const NOTE_SEARCH_HISTORY_LIMIT = 100;
 let noteSearchTimer = null;
 let noteSearchSeq = 0;
 let noteSearchPreviewFrame = null;
+let noteSearchFilePathFrame = null;
 let noteSearchMeasureContext = null;
 let noteSearchPreviewObserver = null;
 let noteSearchVisiblePreviewRows = new Set();
 let noteSearchHistory = [];
 let noteSearchHistoryIndex = -1;
 let noteSearchHistoryDraft = "";
+let openTabSearchIdSeq = 0;
+let noteSearchResultsSignature = "";
+const noteSearchPreviewDisplayCache = new Map();
 let noteSearchState = {
   query: "",
   matchCase: false,
@@ -219,6 +227,7 @@ let noteSearchState = {
   totalMatches: 0,
   totalNotes: 0,
   allCollapsed: false,
+  collapsedTargetIds: new Set(),
   dismissedMatches: new Set(),
 };
 const noteContentCache = new Map();
@@ -241,7 +250,8 @@ window.electronAPI.onAssignWindowId((id) => {
 });
 
 window.electronAPI.onShowExternalDropIndicator(({ dropScreenX, dropScreenY, tabInfo }) => {
-  showExternalDropIndicator(dropScreenX, dropScreenY, getExistingTabForPayload(tabInfo)?.element || null);
+  const existingTab = getExistingTabForPayload(tabInfo);
+  showExternalDropIndicator(dropScreenX, dropScreenY, existingTab?.element || null, existingTab || null);
 });
 window.electronAPI.onHideExternalDropIndicator(() => {
   hideDropIndicator();
@@ -333,6 +343,32 @@ function clampDropPlacementAfterPinnedTabs(placement, excludeTab = null) {
   return { index: pinnedCount, left, referenceTab };
 }
 
+function clampDropPlacementInsidePinnedTabs(placement, excludeTab = null) {
+  const pinnedCount = getPinnedTabCount();
+  if (!placement || placement.index === null || pinnedCount <= 0) return null;
+
+  const tabElements = Array.from(tabs.querySelectorAll(".tab")).filter((tab) => tab !== excludeTab);
+  const excludedTabData = excludeTab ? tabData.find((tab) => tab.element === excludeTab) : null;
+  const effectivePinnedCount = pinnedCount - (excludedTabData?.isPinned ? 1 : 0);
+  if (effectivePinnedCount <= 0) return null;
+  if (placement.index <= effectivePinnedCount) return placement;
+
+  const referenceTab = tabElements[effectivePinnedCount] || null;
+  const lastPinnedTab = tabElements[effectivePinnedCount - 1] || null;
+  const tabsRect = tabs.getBoundingClientRect();
+  const left = lastPinnedTab
+    ? Math.max(0, lastPinnedTab.getBoundingClientRect().right - tabsRect.left)
+    : Math.max(0, tabsRect.width);
+
+  return { index: pinnedCount, left, referenceTab };
+}
+
+function clampDropPlacementForTab(placement, tab, excludeTab = null) {
+  return tab?.isPinned
+    ? clampDropPlacementInsidePinnedTabs(placement, excludeTab)
+    : clampDropPlacementAfterPinnedTabs(placement, excludeTab);
+}
+
 function getTabInsertIndexByScreenX(screenX, excludeTab = null) {
   if (typeof screenX !== "number") return null;
   return getTabDropPlacementByClientX(screenX - window.screenX, excludeTab).index;
@@ -349,6 +385,24 @@ function getExistingTabForPayload(payload) {
   return null;
 }
 
+function getSearchRangeFromPayload(payload) {
+  const range = payload?.searchRange;
+  if (!range) return null;
+  const { startLineNumber, startColumn, endLineNumber, endColumn } = range;
+  if (![startLineNumber, startColumn, endLineNumber, endColumn].every(Number.isFinite)) return null;
+  return new monaco.Range(startLineNumber, startColumn, endLineNumber, endColumn);
+}
+
+function revealSearchRange(range) {
+  if (!range || !monacoEditor) return;
+  monacoEditor.setSelection(range);
+  monacoEditor.revealRangeInCenterIfOutsideViewport(range);
+}
+
+function revealSearchRangeFromPayload(payload) {
+  revealSearchRange(getSearchRangeFromPayload(payload));
+}
+
 // receive data on open in new window
 window.electronAPI.onLoadTabData(async (receivedTabData) => {
   hideDropIndicator();
@@ -360,6 +414,7 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
       : { index: null, referenceTab: null };
   if (existingTab?.isPinned) {
     switchTab(existingTab);
+    revealSearchRangeFromPayload(payload);
     return;
   }
   const adjustedPlacement = clampDropPlacementAfterPinnedTabs(placement, existingTab?.element || null);
@@ -367,12 +422,14 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
 
   if (payload.isNote) {
     await createNoteTabFromPayload(payload, insertIndex, adjustedPlacement);
+    revealSearchRangeFromPayload(payload);
     return;
   }
 
   if (existingTab) {
     moveTabToDropPlacement(existingTab, adjustedPlacement);
     switchTab(existingTab);
+    revealSearchRangeFromPayload(payload);
     return;
   }
 
@@ -424,6 +481,7 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
   }
 
   switchTab(newTabData);
+  revealSearchRangeFromPayload(payload);
 });
 
 // language
@@ -474,7 +532,7 @@ function updateMenuLabels() {
   // document.getElementById("print-button").textContent = i18next.t("menu.print");
   document.querySelector("#changeTheme .btn-text").textContent = i18next.t("menu.theme");
   document.querySelector("#settingsBtn .label").textContent = i18next.t("menu.settings");
-  document.querySelector("#toggleNotesPanelBtn .label").textContent = i18next.t("menu.notes");
+  document.querySelector("#toggleNotesPanelBtn .label").textContent = i18next.t("menu.sideBar");
   document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
   document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
   document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
@@ -526,10 +584,21 @@ function updateMenuLabels() {
   const notesSearch = document.getElementById("notes-search");
   if (notesSearch) updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
   updateNoteSearchLabels();
+  if (notesListHeading) notesListHeading.textContent = i18next.t("notePanel.notesSection");
+  if (notesSearchHeading) {
+    const label = i18next.t("notePanel.searchSection");
+    notesSearchHeading.textContent = label;
+    notesSearchHeading.title = `${label} (Ctrl+Shift+F)`;
+  }
   if (notesAddButton) {
     const newNoteLabel = i18next.t("notePanel.newNote");
     notesAddButton.setAttribute("aria-label", newNoteLabel);
     notesAddButton.title = newNoteLabel;
+  }
+  if (notesListRefreshButton) {
+    const refreshLabel = i18next.t("notePanel.refresh");
+    notesListRefreshButton.setAttribute("aria-label", refreshLabel);
+    notesListRefreshButton.title = refreshLabel;
   }
   if (notesPanelClose) notesPanelClose.setAttribute("aria-label", i18next.t("notePanel.closePanel"));
   document.querySelector('#note-context-menu button[data-action="copyText"]').textContent =
@@ -1775,6 +1844,7 @@ function keepOpenNoteTab(tab = currentTab) {
   setNoteTabPreview(tab, false);
   updateRecentNote(tab.noteId);
   if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+  scheduleNoteSearchAfterTabSetChange();
   return true;
 }
 
@@ -2182,6 +2252,7 @@ function setTabPinned(tab, pinned, options = {}) {
   if (!options.skipNormalize) normalizePinnedTabs();
   savePinnedTabsState();
   if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
+  if (!options.skipMove) scheduleNoteSearchAfterTabSetChange();
   return true;
 }
 
@@ -2199,13 +2270,17 @@ function clampUnpinnedTabInsertIndex(insertIndex) {
   return Math.max(getPinnedTabCount(), Math.min(insertIndex, tabData.length));
 }
 
+function syncTabDomOrderToData() {
+  for (const tab of tabData) {
+    if (tab.element?.parentElement === tabs) tabs.appendChild(tab.element);
+  }
+}
+
 function normalizePinnedTabs() {
   const orderedTabs = [...tabData.filter((tab) => tab.isPinned), ...tabData.filter((tab) => !tab.isPinned)];
   const changed = orderedTabs.some((tab, index) => tabData[index] !== tab);
-  if (changed) {
-    tabData = orderedTabs;
-    for (const tab of tabData) tabs.appendChild(tab.element);
-  }
+  if (changed) tabData = orderedTabs;
+  syncTabDomOrderToData();
   for (const tab of tabData) {
     tab.element?.classList.toggle("pinned", Boolean(tab.isPinned));
     updatePinnedTabIcon(tab);
@@ -2287,6 +2362,7 @@ monacoEditor.onDidChangeModelContent(() => {
   updateStatusBar();
   updateDeviceShareButtonState();
   scheduleApplyDecorations();
+  if (isNoteSearchActive()) scheduleNoteSearch();
 });
 monacoEditor.onDidScrollChange(() => {
   scheduleApplyDecorations();
@@ -2938,6 +3014,10 @@ notesAddButton?.addEventListener("click", async () => {
   await createNewNote();
 });
 
+notesListRefreshButton?.addEventListener("click", async () => {
+  await refreshNotesListNow();
+});
+
 // menu button
 menuButton.onclick = toggleMainMenuFromButton;
 notesPanelMenuButton.onclick = toggleMainMenuFromButton;
@@ -3060,6 +3140,7 @@ window.addEventListener("resize", () => {
   updateMenuPositions();
   updateTabsCompactClass();
   scheduleNoteSearchPreviewUpdate();
+  scheduleNoteSearchFilePathUpdate();
 
   // update editor padding
   const editorHeight = editor.clientHeight;
@@ -3720,16 +3801,26 @@ function updateStatusBar() {
 }
 
 // drag & drop indicator when dragging tab to another window
-function showDropIndicator(clientX, excludeTab = null, clampAfterPinned = false) {
+function showDropIndicator(clientX, excludeTab = null, clampAfterPinned = false, tabForPlacement = null) {
   if (!dropIndicator) return;
   const tabsRect = tabs.getBoundingClientRect();
+  const containerRect = tabsContainer.getBoundingClientRect();
   const effectiveExcludeTab = excludeTab || draggingTab;
-  const placement = getTabDropPlacementByClientX(clientX, effectiveExcludeTab);
-  let { left } = clampAfterPinned ? clampDropPlacementAfterPinnedTabs(placement, effectiveExcludeTab) : placement;
+  const visualPlacement = getTabDropPlacementByClientX(clientX, null);
+  const placement = tabForPlacement
+    ? clampDropPlacementForTab(visualPlacement, tabForPlacement, effectiveExcludeTab)
+    : clampAfterPinned
+      ? clampDropPlacementAfterPinnedTabs(visualPlacement, effectiveExcludeTab)
+      : visualPlacement;
+  if (!placement) {
+    hideDropIndicator();
+    return;
+  }
+  let { left } = placement;
   left = Math.max(0, Math.min(left, tabsRect.width));
   const indicatorWidth = dropIndicator.offsetWidth || 2;
   const notesPanelFirstOffset = document.body.classList.contains("notes-panel-open") && left === 0 ? 2 : 0;
-  const centeredLeft = left - indicatorWidth / 2 + notesPanelFirstOffset;
+  const centeredLeft = tabsRect.left - containerRect.left + left - indicatorWidth / 2 + notesPanelFirstOffset;
   dropIndicator.style.left = `${centeredLeft}px`;
   dropIndicator.style.display = "block";
 }
@@ -3739,7 +3830,7 @@ function hideDropIndicator() {
   dropIndicator.style.display = "none";
 }
 
-function showExternalDropIndicator(screenX, screenY, excludeTab = null) {
+function showExternalDropIndicator(screenX, screenY, excludeTab = null, tabForPlacement = null) {
   if (!dropIndicator) return;
   if (typeof screenX !== "number" || typeof screenY !== "number") {
     hideDropIndicator();
@@ -3750,16 +3841,16 @@ function showExternalDropIndicator(screenX, screenY, excludeTab = null) {
   const tabsRect = tabs.getBoundingClientRect();
 
   if (localClientX <= tabsRect.left) {
-    showDropIndicator(tabsRect.left, excludeTab, true);
+    showDropIndicator(tabsRect.left, excludeTab, true, tabForPlacement);
     return;
   }
 
   if (localClientX >= tabsRect.right) {
-    showDropIndicator(tabsRect.right, excludeTab, true);
+    showDropIndicator(tabsRect.right, excludeTab, true, tabForPlacement);
     return;
   }
 
-  showDropIndicator(localClientX, excludeTab, true);
+  showDropIndicator(localClientX, excludeTab, true, tabForPlacement);
 }
 
 function resetExternalPreviewTargetWindow() {
@@ -3792,6 +3883,8 @@ function setExternalPreviewTargetWindow(targetWindowId, dropScreenX, dropScreenY
 
 // tab dragging
 function enableTabDragging(tab, data) {
+  let tabOrderChangedDuringDrag = false;
+
   tab.addEventListener("mousedown", async (e) => {
     if (e.button !== 0 || e.target.closest(".close") || draggingTab) return;
     // console.log("📌mousedown: start");
@@ -3803,6 +3896,7 @@ function enableTabDragging(tab, data) {
     // console.log("📌mousedown: draggingTab set");
     draggingTabData = data;
     draggingTabWasPinned = Boolean(data.isPinned);
+    tabOrderChangedDuringDrag = false;
     document.body.classList.add("tab-dragging");
     dragIndex = tabData.indexOf(data);
     wasOnlyTab = tabData.length === 1;
@@ -3941,7 +4035,9 @@ function enableTabDragging(tab, data) {
         draggingTab.style.transform = `translateX(${currentX}px)`;
 
         [tabData[dragIndex], tabData[i]] = [tabData[i], tabData[dragIndex]];
+        updateTabAdjacencyClasses();
         scheduleAllUnsavedTabAutosaves();
+        tabOrderChangedDuringDrag = true;
         dragIndex = i;
         startX = e.clientX - currentX;
 
@@ -3960,7 +4056,9 @@ function enableTabDragging(tab, data) {
         draggingTab.style.transform = `translateX(${currentX}px)`;
 
         [tabData[dragIndex], tabData[i]] = [tabData[i], tabData[dragIndex]];
+        updateTabAdjacencyClasses();
         scheduleAllUnsavedTabAutosaves();
+        tabOrderChangedDuringDrag = true;
         dragIndex = i;
         startX = e.clientX - currentX;
 
@@ -4039,6 +4137,7 @@ function enableTabDragging(tab, data) {
 
     if (!isOutsideToolbar) {
       normalizePinnedTabs();
+      if (tabOrderChangedDuringDrag) scheduleNoteSearchAfterTabSetChange();
       dragStartClientPos = null;
       return;
     }
@@ -4190,6 +4289,7 @@ function removeTabAndAdjustUI(targetTabData) {
   tabs.removeChild(targetTabData.element);
   tabData.splice(index, 1);
   scheduleAllUnsavedTabAutosaves();
+  scheduleNoteSearchAfterTabSetChange();
 
   const isActive = targetTabData.element.classList.contains("active");
 
@@ -4366,6 +4466,7 @@ function createTab(name, content = "", path = null, insertIndex = null) {
   enableTabDragging(tab, data);
 
   updateTabsCompactClass();
+  scheduleNoteSearchAfterTabSetChange();
 
   return data;
 }
@@ -4489,6 +4590,7 @@ async function attemptCloseTab(data) {
       if (data.model) data.model.dispose();
       tabData = tabData.filter((t) => t !== data);
       scheduleAllUnsavedTabAutosaves();
+      scheduleNoteSearchAfterTabSetChange();
       syncRecentlyClosedFilesState();
 
       if (tab.classList.contains("active")) {
@@ -4549,6 +4651,7 @@ async function attemptCloseTab(data) {
         if (data.model) data.model.dispose();
         tabData = tabData.filter((t) => t !== data);
         scheduleAllUnsavedTabAutosaves();
+        scheduleNoteSearchAfterTabSetChange();
         syncRecentlyClosedFilesState();
 
         if (tab.classList.contains("active")) {
@@ -4662,6 +4765,7 @@ async function attemptCloseTab(data) {
     if (data.model) data.model.dispose();
     tabData = tabData.filter((t) => t !== data);
     scheduleAllUnsavedTabAutosaves();
+    scheduleNoteSearchAfterTabSetChange();
     syncRecentlyClosedFilesState();
 
     if (tab.classList.contains("active")) {
@@ -5099,11 +5203,9 @@ function updateTabAdjacencyClasses() {
     tab.classList.remove("prev-active");
   });
 
-  const active = tabData.find((tab) => tab.element.classList.contains("active"));
-  const prev = active?.element?.previousElementSibling;
-  if (prev && prev.classList.contains("tab")) {
-    prev.classList.add("prev-active");
-  }
+  const activeIndex = tabData.findIndex((tab) => tab.element.classList.contains("active"));
+  const prev = activeIndex > 0 ? tabData[activeIndex - 1]?.element : null;
+  prev?.classList.add("prev-active");
 }
 
 async function refreshFileTabStateOnActivate(tab) {
@@ -5599,6 +5701,7 @@ notesSearchInput?.addEventListener("input", () => {
   updateNoteSearchPlaceholder(true);
   noteSearchState.dismissedMatches.clear();
   noteSearchState.allCollapsed = false;
+  noteSearchState.collapsedTargetIds.clear();
   if (!getNoteSearchQuery()) {
     clearNoteSearchResults();
     return;
@@ -5662,9 +5765,8 @@ notesSearchRegexButton?.addEventListener("click", () => {
 });
 
 notesSearchRefreshButton?.addEventListener("click", async () => {
-  const focusSearchAfterRefresh = isNoteSearchActive();
-  await refreshNotesPanelNow();
-  if (focusSearchAfterRefresh) notesSearchInput?.focus();
+  await refreshNoteSearchNow();
+  notesSearchInput?.focus();
 });
 
 notesSearchClearButton?.addEventListener("click", () => {
@@ -5788,6 +5890,7 @@ function setNoteSearchInputValue(value) {
   updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
   noteSearchState.dismissedMatches.clear();
   noteSearchState.allCollapsed = false;
+  noteSearchState.collapsedTargetIds.clear();
   if (!value) {
     clearNoteSearchResults();
     return;
@@ -5851,13 +5954,12 @@ function updateNoteSearchLabels() {
 }
 
 function hasNoteSearchResults() {
-  return Boolean(isNoteSearchActive() && notesSearchResults?.querySelector(".notes-search-file"));
+  return Boolean(isNoteSearchActive() && notesSearchResultsList?.querySelector(".notes-search-file"));
 }
 
 function updateNoteSearchActionState() {
   updateNoteSearchLabels();
-  if (notesSearchRefreshButton)
-    notesSearchRefreshButton.disabled = !document.body.classList.contains("notes-panel-open");
+  if (notesSearchRefreshButton) notesSearchRefreshButton.disabled = !isNoteSearchActive();
   if (notesSearchClearButton) notesSearchClearButton.disabled = !isNoteSearchActive() && !noteSearchState.totalMatches;
   if (notesSearchCollapseButton) {
     notesSearchCollapseButton.disabled = !hasNoteSearchResults();
@@ -5882,6 +5984,7 @@ function toggleNoteSearchOption(option, focusInput = true) {
   noteSearchState[option] = !noteSearchState[option];
   noteSearchState.dismissedMatches.clear();
   noteSearchState.allCollapsed = false;
+  noteSearchState.collapsedTargetIds.clear();
   updateNoteSearchToggleState();
   if (isNoteSearchActive()) scheduleNoteSearch();
   if (focusInput) notesSearchInput?.focus();
@@ -5905,7 +6008,37 @@ function scheduleNoteSearch() {
   }, NOTE_SEARCH_DEBOUNCE_MS);
 }
 
-async function refreshNotesPanelNow() {
+function scheduleNoteSearchAfterTabSetChange() {
+  if (!isNoteSearchActive()) return;
+  scheduleNoteSearch();
+}
+
+function getNoteSearchResultsSignature(results, totalMatches) {
+  return JSON.stringify({
+    totalMatches,
+    results: results.map((result) => ({
+      targetId: result.targetId,
+      type: result.type,
+      title: result.title,
+      path: result.path,
+      fullPath: result.fullPath,
+      matches: result.matches.map((match) => ({
+        id: match.id,
+        lineNumber: match.lineNumber,
+        startLineNumber: match.range.startLineNumber,
+        startColumn: match.range.startColumn,
+        endLineNumber: match.range.endLineNumber,
+        endColumn: match.range.endColumn,
+        before: match.preview.fullBefore,
+        inside: match.preview.inside,
+        after: match.preview.after,
+        fullLine: match.preview.fullLine,
+      })),
+    })),
+  });
+}
+
+async function refreshNotesListNow() {
   if (noteSearchTimer) {
     clearTimeout(noteSearchTimer);
     noteSearchTimer = null;
@@ -5922,30 +6055,74 @@ async function refreshNotesPanelNow() {
     notesIndexCache = sortNotesForPanel(await window.electronAPI.refreshNotesIndex());
   }
   noteContentCache.clear();
+  await renderNotesList({ scheduleSearch: false });
+  updateNoteSearchActionState();
+}
+
+async function refreshNoteSearchNow() {
+  if (noteSearchTimer) {
+    clearTimeout(noteSearchTimer);
+    noteSearchTimer = null;
+  }
   noteSearchState.dismissedMatches.clear();
   noteSearchState.allCollapsed = false;
-  await renderNotesList({ scheduleSearch: false });
-  if (isNoteSearchActive()) {
-    await runNoteSearch();
-  } else {
-    updateNoteSearchActionState();
-  }
+  noteSearchState.collapsedTargetIds.clear();
+  if (isNoteSearchActive()) await runNoteSearch();
+  else updateNoteSearchActionState();
 }
 
 function syncNoteSearchCollapseStateFromDom() {
-  if (!notesSearchResults || !hasNoteSearchResults()) {
+  if (!notesSearchResultsList || !hasNoteSearchResults()) {
     noteSearchState.allCollapsed = false;
   } else {
-    const files = Array.from(notesSearchResults.querySelectorAll(".notes-search-file"));
+    const files = Array.from(notesSearchResultsList.querySelectorAll(".notes-search-file"));
     noteSearchState.allCollapsed = files.length > 0 && files.every((file) => file.classList.contains("collapsed"));
   }
   updateNoteSearchActionState();
 }
 
+function isNoteSearchFileSticky(fileRow) {
+  if (!notesSearchResultsList || !fileRow) return false;
+  const rowTop = fileRow.getBoundingClientRect().top;
+  const listTop = notesSearchResultsList.getBoundingClientRect().top;
+  return Math.abs(rowTop - listTop) <= 1;
+}
+
+function getNoteSearchFlowOffsetTop(fileRow) {
+  if (!fileRow || !notesSearchResultsList) return null;
+  let top = 0;
+  for (let node = notesSearchResultsList.firstElementChild; node && node !== fileRow; node = node.nextElementSibling) {
+    top += node.offsetHeight;
+  }
+  return top;
+}
+
+function toggleNoteSearchFileCollapsed(fileRow, targetId) {
+  if (!fileRow || !targetId) return;
+  const shouldCollapse = !fileRow.classList.contains("collapsed");
+  const wasSticky = isNoteSearchFileSticky(fileRow);
+  const targetScrollTop = wasSticky ? getNoteSearchFlowOffsetTop(fileRow) : null;
+  fileRow.classList.toggle("collapsed", shouldCollapse);
+  if (shouldCollapse) noteSearchState.collapsedTargetIds.add(targetId);
+  else noteSearchState.collapsedTargetIds.delete(targetId);
+  syncNoteSearchCollapseStateFromDom();
+
+  if (targetScrollTop !== null && notesSearchResultsList) {
+    requestAnimationFrame(() => {
+      notesSearchResultsList.scrollTop = targetScrollTop;
+    });
+  }
+}
+
 function setNoteSearchCollapseAll(collapsed) {
-  if (!notesSearchResults || !hasNoteSearchResults()) return;
+  if (!notesSearchResultsList || !hasNoteSearchResults()) return;
   noteSearchState.allCollapsed = Boolean(collapsed);
-  notesSearchResults.querySelectorAll(".notes-search-file").forEach((fileRow) => {
+  if (noteSearchState.allCollapsed) {
+    noteSearchState.results.forEach((result) => noteSearchState.collapsedTargetIds.add(result.targetId));
+  } else {
+    noteSearchState.collapsedTargetIds.clear();
+  }
+  notesSearchResultsList.querySelectorAll(".notes-search-file").forEach((fileRow) => {
     fileRow.classList.toggle("collapsed", noteSearchState.allCollapsed);
   });
   updateNoteSearchActionState();
@@ -5961,10 +6138,13 @@ function clearNoteSearchResults() {
   noteSearchState.results = [];
   noteSearchState.totalMatches = 0;
   noteSearchState.totalNotes = 0;
+  noteSearchResultsSignature = "";
   noteSearchState.allCollapsed = false;
+  noteSearchState.collapsedTargetIds.clear();
   noteSearchState.dismissedMatches.clear();
   notesSearchInput?.classList.remove("invalid");
-  if (notesSearchResults) notesSearchResults.innerHTML = "";
+  notesSearchResults?.querySelector(".notes-search-summary")?.remove();
+  if (notesSearchResultsList) notesSearchResultsList.innerHTML = "";
   setNoteSearchActive(false);
   updateNoteSearchActionState();
 }
@@ -6065,6 +6245,18 @@ function fitNoteSearchTextStart(text, maxWidth, font, suffix = "") {
   return `${value.slice(0, low)}${suffix}`;
 }
 
+function applyNoteSearchPreviewDisplay(row, display) {
+  if (!row || !display) return;
+  const before = row.querySelector?.(".notes-search-before");
+  const hit = row.querySelector?.(".notes-search-hit");
+  const after = row.querySelector?.(".notes-search-after");
+  if (!before || !hit || !after) return;
+  if (before.textContent !== display.before) before.textContent = display.before;
+  if (hit.textContent !== display.hit) hit.textContent = display.hit;
+  if (after.textContent !== display.after) after.textContent = display.after;
+  row.classList.add("preview-ready");
+}
+
 function updateNoteSearchPreviewElement(row) {
   const preview = row?.querySelector?.(".notes-search-preview");
   const before = row?.querySelector?.(".notes-search-before");
@@ -6096,19 +6288,25 @@ function updateNoteSearchPreviewElement(row) {
   const remainingWidth = Math.max(0, width - measureNoteSearchText(beforeDisplay, font));
   const hitDisplay = fitNoteSearchTextStart(hitText, remainingWidth, font, ellipsis);
   const hitComplete = hitDisplay === hitText;
+  const afterDisplay = hitComplete ? afterText : "";
+  const display = {
+    width: Math.round(width),
+    before: beforeDisplay,
+    hit: hitDisplay,
+    after: afterDisplay,
+  };
 
-  before.textContent = beforeDisplay;
-  hit.textContent = hitDisplay;
-  after.textContent = hitComplete ? afterText : "";
+  applyNoteSearchPreviewDisplay(row, display);
+  noteSearchPreviewDisplayCache.set(matchId, display);
 }
 
 function updateNoteSearchPreviewElements() {
-  if (!notesSearchResults) return;
+  if (!notesSearchResultsList) return;
   if (noteSearchVisiblePreviewRows.size) {
     noteSearchVisiblePreviewRows.forEach((row) => updateNoteSearchPreviewElement(row));
     return;
   }
-  notesSearchResults.querySelectorAll(".notes-search-match").forEach((row) => updateNoteSearchPreviewElement(row));
+  notesSearchResultsList.querySelectorAll(".notes-search-match").forEach((row) => updateNoteSearchPreviewElement(row));
 }
 
 function scheduleNoteSearchPreviewUpdate() {
@@ -6119,10 +6317,39 @@ function scheduleNoteSearchPreviewUpdate() {
   });
 }
 
+function updateNoteSearchFilePathVisibility() {
+  if (!notesSearchResultsList) return;
+  notesSearchResultsList.querySelectorAll(".notes-search-file.has-path").forEach((row) => {
+    const label = row.querySelector(".notes-search-file-label");
+    const title = row.querySelector(".notes-search-file-title");
+    const path = row.querySelector(".notes-search-file-path");
+    if (!label || !title || !path?.textContent) {
+      row.classList.remove("show-path");
+      return;
+    }
+    row.classList.remove("show-path");
+    const available = label.clientWidth;
+    const titleWidth = title.scrollWidth;
+    row.classList.toggle("show-path", available - titleWidth >= 36);
+  });
+}
+
+function scheduleNoteSearchFilePathUpdate() {
+  if (noteSearchFilePathFrame !== null) return;
+  noteSearchFilePathFrame = requestAnimationFrame(() => {
+    noteSearchFilePathFrame = null;
+    updateNoteSearchFilePathVisibility();
+  });
+}
+
 function resetNoteSearchPreviewObserver() {
   if (noteSearchPreviewFrame !== null) {
     cancelAnimationFrame(noteSearchPreviewFrame);
     noteSearchPreviewFrame = null;
+  }
+  if (noteSearchFilePathFrame !== null) {
+    cancelAnimationFrame(noteSearchFilePathFrame);
+    noteSearchFilePathFrame = null;
   }
   if (noteSearchPreviewObserver) {
     noteSearchPreviewObserver.disconnect();
@@ -6132,7 +6359,7 @@ function resetNoteSearchPreviewObserver() {
 }
 
 function getNoteSearchPreviewObserver() {
-  if (!("IntersectionObserver" in window) || !notesPanel) return null;
+  if (!("IntersectionObserver" in window) || !notesSearchResultsList) return null;
   if (!noteSearchPreviewObserver) {
     noteSearchPreviewObserver = new IntersectionObserver(
       (entries) => {
@@ -6147,7 +6374,7 @@ function getNoteSearchPreviewObserver() {
         }
       },
       {
-        root: notesPanel,
+        root: notesSearchResultsList,
         rootMargin: "220px 0px",
         threshold: 0,
       },
@@ -6166,12 +6393,83 @@ function observeNoteSearchPreviewRow(row) {
   observer.observe(row);
 }
 
-function getNoteSearchMatchId(noteId, range, query) {
-  return `${noteId}:${range.startLineNumber}:${range.startColumn}:${range.endLineNumber}:${range.endColumn}:${query}`;
+function getOpenTabSearchId(tab) {
+  if (!tab._searchTargetId) tab._searchTargetId = `tab:${++openTabSearchIdSeq}`;
+  return tab._searchTargetId;
 }
 
-function searchNoteContent(note, content, query) {
-  const model = monaco.editor.createModel(content || "", "monapad");
+function getSearchResultPathDisplay(fullPath) {
+  const value = String(fullPath || "");
+  if (!value) return "";
+  const index = Math.max(value.lastIndexOf("\\"), value.lastIndexOf("/"));
+  return index > 0 ? value.slice(0, index) : value;
+}
+
+function getNoteSearchMatchId(targetId, range, query) {
+  return `${targetId}:${range.startLineNumber}:${range.startColumn}:${range.endLineNumber}:${range.endColumn}:${query}`;
+}
+
+function createOpenTabSearchTarget(tab, order) {
+  const title = truncateNoteTitle(tab.name || getNoteTitleFromContent(tab.model?.getValue() ?? tab.content ?? ""));
+  return {
+    type: tab.isNote ? "note" : "tab",
+    targetId: tab.isNote && tab.noteId ? `note:${tab.noteId}` : getOpenTabSearchId(tab),
+    noteId: tab.isNote ? tab.noteId : null,
+    tabId: tab.isNote ? null : getOpenTabSearchId(tab),
+    tab,
+    title,
+    path: tab.isNote ? "" : getSearchResultPathDisplay(tab.path),
+    fullPath: tab.isNote ? title : tab.path || title,
+    order,
+  };
+}
+
+function createNoteSearchTarget(note, order) {
+  return {
+    type: "note",
+    targetId: `note:${note.id}`,
+    noteId: note.id,
+    note,
+    title: truncateNoteTitle(note.title || getNoteTitleFromContent("")),
+    path: "",
+    fullPath: truncateNoteTitle(note.title || getNoteTitleFromContent("")),
+    order,
+  };
+}
+
+function createSearchTargets(notes) {
+  const targets = [];
+  const openNoteIds = new Set();
+
+  tabData.forEach((tab, index) => {
+    if (!tab) return;
+    if (tab.isNotePreview) return;
+    if (tab.isNote && tab.noteId) openNoteIds.add(tab.noteId);
+    targets.push(createOpenTabSearchTarget(tab, index));
+  });
+
+  notes.forEach((note, index) => {
+    if (!note?.id || openNoteIds.has(note.id)) return;
+    targets.push(createNoteSearchTarget(note, tabData.length + index));
+  });
+
+  return targets;
+}
+
+async function getSearchableTargetContent(target) {
+  if (target.type === "tab") {
+    if (!tabData.includes(target.tab)) return null;
+    return target.tab.model?.getValue() ?? target.tab.content ?? "";
+  }
+  if (target.tab && tabData.includes(target.tab)) {
+    return target.tab.model?.getValue() ?? target.tab.content ?? "";
+  }
+  return getSearchableNoteContent(target.note);
+}
+
+function searchTargetContent(target, content, query) {
+  const existingModel = target.type === "tab" || target.tab ? target.tab?.model : null;
+  const model = existingModel || monaco.editor.createModel(content || "", "monapad");
   try {
     const matches = model.findMatches(
       query,
@@ -6186,15 +6484,18 @@ function searchNoteContent(note, content, query) {
     return matches.map((match) => {
       const range = match.range;
       return {
-        id: getNoteSearchMatchId(note.id, range, query),
-        noteId: note.id,
+        id: getNoteSearchMatchId(target.targetId, range, query),
+        targetId: target.targetId,
+        type: target.type,
+        noteId: target.noteId,
+        tabId: target.tabId,
         lineNumber: range.startLineNumber,
         range,
         preview: createNoteSearchPreview(model, match),
       };
     });
   } finally {
-    model.dispose();
+    if (!existingModel) model.dispose();
   }
 }
 
@@ -6236,45 +6537,60 @@ async function runNoteSearch() {
     return;
   }
 
-  renderNoteSearchMessage(getNoteSearchLabel("searching", "Searching..."));
+  if (!noteSearchResultsSignature && !noteSearchState.totalMatches)
+    renderNoteSearchMessage(getNoteSearchLabel("searching", "Searching..."));
 
   try {
     const notes = sortNotesForPanel(
       Array.isArray(notesIndexCache) && notesIndexCache.length ? notesIndexCache : await window.electronAPI.listNotes(),
     );
+    const targets = createSearchTargets(notes);
     const results = [];
     let totalMatches = 0;
 
     await Promise.all(
-      notes.map(async (note) => {
-        if (!note?.id || note.contentBytes === 0) return;
-        const content = await getSearchableNoteContent(note);
+      targets.map(async (target) => {
+        if (target.type === "note" && target.note?.contentBytes === 0) return;
+        const content = await getSearchableTargetContent(target);
         if (seq !== noteSearchSeq || content === null) return;
 
-        const matches = searchNoteContent(note, content, query).filter(
+        const matches = searchTargetContent(target, content, query).filter(
           (match) => !noteSearchState.dismissedMatches.has(match.id),
         );
         if (!matches.length) return;
 
         totalMatches += matches.length;
         results.push({
-          noteId: note.id,
-          title: truncateNoteTitle(note.title || getNoteTitleFromContent(content)),
+          targetId: target.targetId,
+          type: target.type,
+          noteId: target.noteId,
+          tabId: target.tabId,
+          title: target.type === "note" ? truncateNoteTitle(target.title || getNoteTitleFromContent(content)) : target.title,
+          path: target.path,
+          fullPath: target.fullPath,
+          order: target.order,
           matches,
         });
       }),
     );
 
     if (seq !== noteSearchSeq) return;
-    results.sort((a, b) => {
-      const aIndex = notes.findIndex((note) => note.id === a.noteId);
-      const bIndex = notes.findIndex((note) => note.id === b.noteId);
-      return aIndex - bIndex;
-    });
+    results.sort((a, b) => a.order - b.order);
+
+    const nextSignature = getNoteSearchResultsSignature(results, totalMatches);
+    if (nextSignature === noteSearchResultsSignature) {
+      updateNoteSearchActionState();
+      return;
+    }
 
     noteSearchState.results = results;
+    const resultTargetIds = new Set(results.map((result) => result.targetId));
+    noteSearchState.collapsedTargetIds = new Set(
+      [...noteSearchState.collapsedTargetIds].filter((targetId) => resultTargetIds.has(targetId)),
+    );
     noteSearchState.totalMatches = totalMatches;
     noteSearchState.totalNotes = results.length;
+    noteSearchResultsSignature = nextSignature;
     renderNoteSearchResults();
   } catch (error) {
     if (seq !== noteSearchSeq) return;
@@ -6283,20 +6599,22 @@ async function runNoteSearch() {
 }
 
 function renderNoteSearchMessage(message) {
-  if (!notesSearchResults) return;
+  if (!notesSearchResults || !notesSearchResultsList) return;
   resetNoteSearchPreviewObserver();
-  notesSearchResults.innerHTML = "";
+  notesSearchResults.querySelector(".notes-search-summary")?.remove();
+  notesSearchResultsList.innerHTML = "";
   const item = document.createElement("div");
   item.className = "notes-search-message";
   item.textContent = message;
-  notesSearchResults.appendChild(item);
+  notesSearchResultsList.appendChild(item);
   updateNoteSearchActionState();
 }
 
 function renderNoteSearchResults() {
-  if (!notesSearchResults) return;
+  if (!notesSearchResults || !notesSearchResultsList) return;
   resetNoteSearchPreviewObserver();
-  notesSearchResults.innerHTML = "";
+  notesSearchResults.querySelector(".notes-search-summary")?.remove();
+  notesSearchResultsList.innerHTML = "";
 
   if (!noteSearchState.totalMatches) {
     renderNoteSearchMessage(getNoteSearchLabel("noResults", "No results found"));
@@ -6309,22 +6627,34 @@ function renderNoteSearchResults() {
     ? i18next.t("notePanel.searchSummary", {
         count: noteSearchState.totalMatches,
         notes: noteSearchState.totalNotes,
+        items: noteSearchState.totalNotes,
       })
-    : `${noteSearchState.totalMatches} results in ${noteSearchState.totalNotes} notes`;
-  notesSearchResults.appendChild(summary);
+    : `${noteSearchState.totalMatches} results in ${noteSearchState.totalNotes} items`;
+  notesSearchResults.insertBefore(summary, notesSearchResultsList);
 
   for (const result of noteSearchState.results) {
     const fileRow = document.createElement("div");
-    fileRow.className = `notes-search-file${noteSearchState.allCollapsed ? " collapsed" : ""}`;
-    fileRow.dataset.noteId = result.noteId;
+    const isCollapsed = noteSearchState.allCollapsed || noteSearchState.collapsedTargetIds.has(result.targetId);
+    fileRow.className = `notes-search-file ${result.type}-target${isCollapsed ? " collapsed" : ""}`;
+    fileRow.classList.toggle("has-path", Boolean(result.path));
+    fileRow.dataset.targetId = result.targetId;
+    if (result.noteId) fileRow.dataset.noteId = result.noteId;
 
     const twistie = document.createElement("span");
     twistie.className = "notes-search-twistie codicon codicon-chevron-down";
 
+    const label = document.createElement("span");
+    label.className = "notes-search-file-label";
+    label.title = result.fullPath || result.title;
+
     const title = document.createElement("span");
     title.className = "notes-search-file-title";
     title.textContent = result.title;
-    title.title = result.title;
+
+    const path = document.createElement("span");
+    path.className = "notes-search-file-path";
+    path.textContent = result.path || "";
+    label.append(title, path);
 
     const count = document.createElement("span");
     count.className = "notes-search-count";
@@ -6337,17 +6667,16 @@ function renderNoteSearchResults() {
     dismiss.setAttribute("aria-label", getNoteSearchLabel("dismiss", "Dismiss"));
     dismiss.addEventListener("click", (e) => {
       e.stopPropagation();
-      dismissNoteSearchFile(result.noteId);
+      dismissNoteSearchFile(result.targetId);
     });
 
     const matchGroup = document.createElement("div");
     matchGroup.className = "notes-search-match-group";
     const rowsToObserve = [];
 
-    fileRow.append(twistie, title, count, dismiss);
+    fileRow.append(twistie, label, count, dismiss);
     fileRow.addEventListener("click", () => {
-      fileRow.classList.toggle("collapsed");
-      syncNoteSearchCollapseStateFromDom();
+      toggleNoteSearchFileCollapsed(fileRow, result.targetId);
     });
 
     for (const match of result.matches) {
@@ -6356,19 +6685,23 @@ function renderNoteSearchResults() {
       rowsToObserve.push(matchRow);
     }
 
-    notesSearchResults.append(fileRow, matchGroup);
+    notesSearchResultsList.append(fileRow, matchGroup);
     rowsToObserve.forEach((row) => observeNoteSearchPreviewRow(row));
   }
+  scheduleNoteSearchFilePathUpdate();
   updateNoteSearchActionState();
 }
 
 function createNoteSearchMatchElement(match) {
   const row = document.createElement("div");
   row.className = "notes-search-match";
-  row.dataset.noteId = match.noteId;
+  row.dataset.targetId = match.targetId;
+  if (match.noteId) row.dataset.noteId = match.noteId;
   row.dataset.matchId = match.id;
   row.noteSearchMatch = match;
   row.title = `${match.lineNumber}: ${escapeSearchPreview(match.preview.fullLine, NOTE_SEARCH_HOVER_MAX)}`;
+  const cachedPreview = noteSearchPreviewDisplayCache.get(match.id);
+  if (cachedPreview) row.classList.add("preview-ready");
 
   const preview = document.createElement("span");
   preview.className = "notes-search-preview";
@@ -6381,7 +6714,11 @@ function createNoteSearchMatchElement(match) {
   hit.textContent = match.preview.inside;
   const after = document.createElement("span");
   after.className = "notes-search-after";
-  after.textContent = match.preview.after;
+  after.textContent = cachedPreview?.after ?? match.preview.after;
+  if (cachedPreview) {
+    before.textContent = cachedPreview.before;
+    hit.textContent = cachedPreview.hit;
+  }
   preview.append(before, hit, after);
 
   const dismiss = document.createElement("button");
@@ -6396,16 +6733,19 @@ function createNoteSearchMatchElement(match) {
 
   row.append(preview, dismiss);
   row.addEventListener("click", async () => {
+    if (suppressNoteSearchMatchClick) return;
     await openNoteSearchMatch(match, { preview: true });
   });
   row.addEventListener("dblclick", async () => {
+    if (suppressNoteSearchMatchClick) return;
     await openNoteSearchMatch(match, { preview: false });
   });
   row.addEventListener("auxclick", async (e) => {
-    if (e.button !== 1) return;
+    if (e.button !== 1 || suppressNoteSearchMatchClick) return;
     e.preventDefault();
     await openNoteSearchMatch(match, { preview: false });
   });
+  row.addEventListener("mousedown", (e) => beginNoteSearchMatchDrag(e, row, match));
   return row;
 }
 
@@ -6417,31 +6757,139 @@ function dismissNoteSearchMatch(matchId) {
   noteSearchState.results = noteSearchState.results.filter((result) => result.matches.length);
   noteSearchState.totalMatches = noteSearchState.results.reduce((total, result) => total + result.matches.length, 0);
   noteSearchState.totalNotes = noteSearchState.results.length;
+  noteSearchResultsSignature = getNoteSearchResultsSignature(noteSearchState.results, noteSearchState.totalMatches);
   renderNoteSearchResults();
 }
 
-function dismissNoteSearchFile(noteId) {
-  const result = noteSearchState.results.find((item) => item.noteId === noteId);
+function dismissNoteSearchFile(targetId) {
+  const result = noteSearchState.results.find((item) => item.targetId === targetId);
   if (!result) return;
   result.matches.forEach((match) => noteSearchState.dismissedMatches.add(match.id));
-  noteSearchState.results = noteSearchState.results.filter((item) => item.noteId !== noteId);
+  noteSearchState.results = noteSearchState.results.filter((item) => item.targetId !== targetId);
   noteSearchState.totalMatches = noteSearchState.results.reduce((total, item) => total + item.matches.length, 0);
   noteSearchState.totalNotes = noteSearchState.results.length;
+  noteSearchResultsSignature = getNoteSearchResultsSignature(noteSearchState.results, noteSearchState.totalMatches);
   renderNoteSearchResults();
 }
 
 async function openNoteSearchMatch(match, options = {}) {
-  const tab = await openNoteById(match.noteId, { preview: options.preview !== false });
+  const tab =
+    match.type === "tab"
+      ? tabData.find((item) => item._searchTargetId === match.tabId)
+      : await openNoteById(match.noteId, { preview: options.preview !== false });
   if (!tab || !monacoEditor) return;
+  if (match.type === "tab") switchTab(tab);
 
-  const range = new monaco.Range(
+  revealSearchRange(createRangeFromNoteSearchMatch(match));
+}
+
+function createRangeFromNoteSearchMatch(match) {
+  if (!match?.range) return null;
+  return new monaco.Range(
     match.range.startLineNumber,
     match.range.startColumn,
     match.range.endLineNumber,
     match.range.endColumn,
   );
-  monacoEditor.setSelection(range);
-  monacoEditor.revealRangeInCenterIfOutsideViewport(range);
+}
+
+function createSearchRangePayload(match) {
+  if (!match?.range) return null;
+  return {
+    startLineNumber: match.range.startLineNumber,
+    startColumn: match.range.startColumn,
+    endLineNumber: match.range.endLineNumber,
+    endColumn: match.range.endColumn,
+  };
+}
+
+async function getOpenTabPayload(tab) {
+  if (!tab) return null;
+  await writeTabAutosave(tab);
+  return {
+    name: tab.name,
+    content: tab.model?.getValue?.() ?? tab.content ?? "",
+    path: tab.path,
+    isNote: tab.isNote,
+    noteId: tab.noteId,
+    notePath: tab.notePath,
+    noteTitle: tab.noteTitle,
+    noteCreatedAt: tab.noteCreatedAt,
+    noteUpdatedAt: tab.noteUpdatedAt,
+    isFileSaved: tab.isFileSaved,
+    originalContent: tab.originalContent,
+    fontSize: tab.fontSize,
+    wordWrap: tab.wordWrap,
+    isMarkdown: tab.isMarkdown,
+    draftId: tab.draftId,
+    hasReloadButton: tab.element?.classList.contains("has-reload-button"),
+  };
+}
+
+async function getNoteSearchMatchTabPayload(match) {
+  let payload = null;
+  if (match?.type === "note" && match.noteId) {
+    payload = await getNoteTabPayload(match.noteId);
+  } else if (match?.type === "tab" && match.tabId) {
+    payload = await getOpenTabPayload(tabData.find((tab) => tab._searchTargetId === match.tabId));
+  }
+  if (!payload) return null;
+  payload.searchRange = createSearchRangePayload(match);
+  return payload;
+}
+
+async function openTabPayloadInCurrentWindow(payload, placement = { index: null, referenceTab: null }) {
+  if (!payload) return null;
+  const existingTab = getExistingTabForPayload(payload);
+  if (existingTab?.isPinned) {
+    const adjustedPlacement =
+      placement?.index === null || placement?.index === undefined
+        ? null
+        : clampDropPlacementInsidePinnedTabs(placement, existingTab.element);
+    if (adjustedPlacement) moveTabToDropPlacement(existingTab, adjustedPlacement);
+    switchTab(existingTab);
+    revealSearchRangeFromPayload(payload);
+    return existingTab;
+  }
+
+  const adjustedPlacement = clampDropPlacementAfterPinnedTabs(placement, existingTab?.element || null);
+  const insertIndex = adjustedPlacement.index;
+
+  if (payload.isNote) {
+    const tab = await createNoteTabFromPayload(payload, insertIndex, adjustedPlacement);
+    revealSearchRangeFromPayload(payload);
+    return tab;
+  }
+
+  if (existingTab) {
+    moveTabToDropPlacement(existingTab, adjustedPlacement);
+    switchTab(existingTab);
+    revealSearchRangeFromPayload(payload);
+    return existingTab;
+  }
+
+  if (tabData.length === 1 && !tabData[0].isPinned && !tabData[0].content.trim() && !tabData[0].path) {
+    const defaultTab = tabData[0];
+    tabs.removeChild(defaultTab.element);
+    tabData = [];
+  }
+
+  const tab = createTab(payload.name, payload.content, payload.path, insertIndex);
+  tab.isFileSaved = payload.isFileSaved;
+  tab.originalContent = payload.originalContent;
+  tab.fontSize = payload.fontSize;
+  tab.wordWrap = payload.wordWrap;
+  tab.isMarkdown = payload.isMarkdown;
+  tab.draftId = payload.draftId || tab.draftId;
+  if (!tab.isFileSaved) {
+    tab.element.querySelector(".close")?.classList.add("show-unsaved");
+    await writeTabAutosave(tab, tab.model.getValue());
+    scheduleTabAutosave(tab, tab.model.getValue());
+  }
+  if (payload.hasReloadButton) reloadButton(tab, payload.path, "add");
+  switchTab(tab);
+  revealSearchRangeFromPayload(payload);
+  return tab;
 }
 
 async function deleteNoteEverywhere(noteId, { trash = false } = {}) {
@@ -6574,9 +7022,10 @@ async function createNoteTabFromPayload(payload, insertIndex = null, placement =
       : placement;
   const adjustedInsertIndex = insertIndex === null ? null : Math.max(insertIndex, pinnedCount);
   if (existingTab) {
+    if (existingTab.isNotePreview) keepOpenNoteTab(existingTab);
     moveTabToDropPlacement(existingTab, adjustedPlacement || { index: adjustedInsertIndex, referenceTab: null });
     switchTab(existingTab);
-    updateRecentNote(existingTab.noteId);
+    if (existingTab.noteId) updateRecentNote(existingTab.noteId);
     return existingTab;
   }
 
@@ -6618,14 +7067,15 @@ function moveTabToDropPlacement(tab, placement = null) {
     ? Math.max(0, Math.min(rawIndex, pinnedBoundary))
     : Math.max(pinnedBoundary, Math.min(rawIndex, tabData.length));
 
+  const reference = tabData[finalIndex]?.element || null;
   tabData.splice(finalIndex, 0, tab);
-  const reference = tabs.children[finalIndex];
   if (reference && reference !== tab.element) tabs.insertBefore(tab.element, reference);
   else tabs.appendChild(tab.element);
 
   normalizePinnedTabs();
   updateTabAdjacencyClasses();
   scheduleAllUnsavedTabAutosaves();
+  if (oldIndex !== finalIndex) scheduleNoteSearchAfterTabSetChange();
   return tab;
 }
 
@@ -6657,6 +7107,8 @@ function moveTabToIndex(tab, index) {
     : Math.max(pinnedBoundary, Math.min(targetIndex, tabData.length));
   if (oldIndex === finalIndex) {
     tabData.splice(oldIndex, 0, tab);
+    syncTabDomOrderToData();
+    updateTabAdjacencyClasses();
     return tab;
   }
   const reference = tabData[finalIndex]?.element || null;
@@ -6668,6 +7120,7 @@ function moveTabToIndex(tab, index) {
   normalizePinnedTabs();
   updateTabAdjacencyClasses();
   scheduleAllUnsavedTabAutosaves();
+  scheduleNoteSearchAfterTabSetChange();
   return tab;
 }
 
@@ -6676,11 +7129,17 @@ function getOpenNoteTabById(noteId) {
 }
 
 let noteDragState = null;
+let noteSearchDragState = null;
 let suppressNoteClick = false;
+let suppressNoteSearchMatchClick = false;
 let notePreviewOpenSeq = 0;
 const pendingNoteOpens = new Map();
 
 function beginNoteListDrag(e, item) {
+  if (e.button === 1) {
+    e.preventDefault();
+    return;
+  }
   if (e.button !== 0 || e.target.closest(".note-pin-button")) return;
   startNotePanelDragFromItem(item, e);
 }
@@ -6806,7 +7265,9 @@ function updateNoteExternalDragPreview(e) {
   if (!noteDragState?.externalStarted) return;
   const existingNoteTab = getOpenNoteTabById(noteDragState.noteId);
   scheduleCursorWindowMove(e.screenX, e.screenY);
-  if (existingNoteTab?.isPinned) {
+  const isPinnedExistingTab = Boolean(existingNoteTab?.isPinned);
+  const canMovePinnedInThisWindow = isPinnedExistingTab && isScreenPointInMyWindow(e) && getPinnedTabCount() > 1;
+  if (isPinnedExistingTab && !canMovePinnedInThisWindow) {
     resetExternalPreviewTargetWindow();
     window.electronAPI.setCursorWindowState("forbidden");
     hideDropIndicator();
@@ -6818,7 +7279,7 @@ function updateNoteExternalDragPreview(e) {
   if (isScreenPointInMyWindow(e)) {
     resetExternalPreviewTargetWindow();
     window.electronAPI.setCursorWindowState("move");
-    showDropIndicator(e.clientX, existingNoteTab?.element || null, true);
+    showDropIndicator(e.clientX, existingNoteTab?.element || null, true, existingNoteTab || null);
     return;
   }
 
@@ -6878,7 +7339,8 @@ async function finishNoteExternalDrag(e) {
   if (!payload) return;
 
   const targetWindowId = await window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY });
-  if (getOpenNoteTabById(state.noteId)?.isPinned) return;
+  const existingNoteTab = getOpenNoteTabById(state.noteId);
+  if (existingNoteTab?.isPinned && !isInMyWindow) return;
   if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow) {
     await window.electronAPI.sendTabToWindow(targetWindowId, {
       tabInfo: payload,
@@ -6890,10 +7352,12 @@ async function finishNoteExternalDrag(e) {
   }
 
   if (isInMyWindow) {
-    const existingNoteTab = getOpenNoteTabById(state.noteId);
     const placement = getTabDropPlacementByClientX(e.clientX, existingNoteTab?.element || null);
-    const insertIndex = placement.index;
-    await createNoteTabFromPayload(payload, insertIndex, placement);
+    const adjustedPlacement = existingNoteTab
+      ? clampDropPlacementForTab(placement, existingNoteTab, existingNoteTab.element)
+      : clampDropPlacementAfterPinnedTabs(placement, null);
+    if (!adjustedPlacement) return;
+    await createNoteTabFromPayload(payload, adjustedPlacement.index, adjustedPlacement);
     return;
   }
 
@@ -6909,7 +7373,175 @@ function cancelNoteDragByShortcut() {
   noteDragState = null;
 }
 
+function beginNoteSearchMatchDrag(e, row, match) {
+  if (e.button === 1) {
+    e.preventDefault();
+    return;
+  }
+  if (e.button !== 0 || e.target.closest(".notes-search-dismiss")) return;
+  noteSearchDragState = {
+    row,
+    match,
+    startX: e.clientX,
+    startY: e.clientY,
+    dragging: false,
+    externalStarted: false,
+    payloadPromise: getNoteSearchMatchTabPayload(match),
+  };
+}
+
+function resetNoteSearchMatchDragRow(row) {
+  if (!row) return;
+  row.classList.remove("dragging");
+  row.style.pointerEvents = "";
+}
+
+function applyNoteSearchMatchDragRowStyle(row) {
+  if (!row) return;
+  row.classList.add("dragging");
+  row.style.pointerEvents = "none";
+}
+
+async function startNoteSearchMatchExternalDrag(e) {
+  if (!noteSearchDragState || noteSearchDragState.externalStarted) return;
+  const state = noteSearchDragState;
+  state.externalStarted = true;
+  state.dragging = true;
+  applyNoteSearchMatchDragRowStyle(state.row);
+  windowBoundsCache = await window.electronAPI.getMyBounds();
+  if (noteSearchDragState !== state) return;
+  dragStartClientPos = { x: e.clientX, y: e.clientY };
+  externalCancelDragging = cancelNoteSearchMatchDragByShortcut;
+  overlayWindowVisible = true;
+  document.body.classList.add("note-external-dragging");
+  window.electronAPI.createCursorWindow();
+  updateNoteSearchMatchExternalDragPreview(e);
+}
+
+async function updateNoteSearchMatchExternalDragPreview(e) {
+  const state = noteSearchDragState;
+  if (!state?.externalStarted) return;
+  scheduleCursorWindowMove(e.screenX, e.screenY);
+  const payload = await state.payloadPromise;
+  if (!payload || noteSearchDragState !== state) return;
+  const existingTab = getExistingTabForPayload(payload);
+  const isPinnedExistingTab = Boolean(existingTab?.isPinned);
+  const canMovePinnedInThisWindow = isPinnedExistingTab && isScreenPointInMyWindow(e) && getPinnedTabCount() > 1;
+  if (isPinnedExistingTab && !canMovePinnedInThisWindow) {
+    resetExternalPreviewTargetWindow();
+    window.electronAPI.setCursorWindowState("forbidden");
+    hideDropIndicator();
+    return;
+  }
+
+  if (isPointInNotePanel(e)) {
+    resetExternalPreviewTargetWindow();
+    window.electronAPI.setCursorWindowState("forbidden");
+    hideDropIndicator();
+    return;
+  }
+
+  const shouldCheckTargetWindow = windowBoundsCache && performance.now() - lastWindowCheck > 100;
+  if (shouldCheckTargetWindow) lastWindowCheck = performance.now();
+
+  if (isScreenPointInMyWindow(e)) {
+    resetExternalPreviewTargetWindow();
+    window.electronAPI.setCursorWindowState("move");
+    showDropIndicator(e.clientX, existingTab?.element || null, true, existingTab || null);
+    return;
+  }
+
+  if (!shouldCheckTargetWindow) return;
+
+  const targetWindowId = await window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY });
+  if (!noteSearchDragState?.externalStarted) return;
+  const isInMyWindow = isScreenPointInMyWindow(e);
+  let isTargetMinimized = false;
+  if (targetWindowId) isTargetMinimized = await window.electronAPI.isWindowMinimized(targetWindowId);
+
+  if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow && !isTargetMinimized) {
+    window.electronAPI.setCursorWindowState("move");
+    hideDropIndicator();
+    setExternalPreviewTargetWindow(targetWindowId, e.screenX, e.screenY, payload);
+    return;
+  }
+
+  resetExternalPreviewTargetWindow();
+  window.electronAPI.setCursorWindowState("new");
+  hideDropIndicator();
+}
+
+async function finishNoteSearchMatchExternalDrag(e) {
+  const state = noteSearchDragState;
+  if (!state) return;
+  const payload = await state.payloadPromise;
+  const isInMyWindow = isScreenPointInMyWindow(e);
+  const position = dragStartClientPos
+    ? {
+        x: e.screenX - dragStartClientPos.x,
+        y: e.screenY - dragStartClientPos.y,
+      }
+    : { x: e.screenX, y: e.screenY };
+
+  resetNoteSearchMatchDragRow(state.row);
+  cleanupNoteExternalDrag();
+  noteSearchDragState = null;
+  if (!payload) return;
+  const existingTab = getExistingTabForPayload(payload);
+  if (existingTab?.isPinned && !isInMyWindow) return;
+  if (isPointInNotePanel(e)) return;
+
+  const targetWindowId = await window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY });
+  if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow) {
+    await window.electronAPI.sendTabToWindow(targetWindowId, {
+      tabInfo: payload,
+      dropScreenX: e.screenX,
+      dropScreenY: e.screenY,
+    });
+    await window.electronAPI.focusWindow(targetWindowId);
+    return;
+  }
+
+  if (isInMyWindow) {
+    const placement = getTabDropPlacementByClientX(e.clientX, existingTab?.element || null);
+    const adjustedPlacement = existingTab
+      ? clampDropPlacementForTab(placement, existingTab, existingTab.element)
+      : clampDropPlacementAfterPinnedTabs(placement, null);
+    if (!adjustedPlacement) return;
+    await openTabPayloadInCurrentWindow(payload, adjustedPlacement);
+    return;
+  }
+
+  await window.electronAPI.createNewWindowWithTab(payload, position);
+}
+
+function cancelNoteSearchMatchDragByShortcut() {
+  if (!noteSearchDragState) return;
+  resetNoteSearchMatchDragRow(noteSearchDragState.row);
+  cleanupNoteExternalDrag();
+  noteSearchDragState = null;
+}
+
 window.addEventListener("mousemove", (e) => {
+  if (noteSearchDragState) {
+    if (!noteSearchDragState.dragging) {
+      const moved =
+        Math.abs(e.clientX - noteSearchDragState.startX) >= 5 ||
+        Math.abs(e.clientY - noteSearchDragState.startY) >= 5;
+      if (!moved) return;
+      noteSearchDragState.dragging = true;
+      applyNoteSearchMatchDragRowStyle(noteSearchDragState.row);
+      startNoteSearchMatchExternalDrag(e);
+      return;
+    }
+    if (!noteSearchDragState.externalStarted) {
+      startNoteSearchMatchExternalDrag(e);
+      return;
+    }
+    updateNoteSearchMatchExternalDragPreview(e);
+    return;
+  }
+
   if (!noteDragState) return;
   const { item, startY } = noteDragState;
   if (noteDragState.mode === "external") {
@@ -6972,6 +7604,21 @@ window.addEventListener("mousemove", (e) => {
 });
 
 window.addEventListener("mouseup", async (e) => {
+  if (noteSearchDragState) {
+    const { row, dragging } = noteSearchDragState;
+    if (dragging) {
+      suppressNoteSearchMatchClick = true;
+      setTimeout(() => {
+        suppressNoteSearchMatchClick = false;
+      }, 0);
+      await finishNoteSearchMatchExternalDrag(e);
+      return;
+    }
+    resetNoteSearchMatchDragRow(row);
+    noteSearchDragState = null;
+    return;
+  }
+
   if (!noteDragState) return;
   const { item, dragging } = noteDragState;
   if (noteDragState.mode === "external") {

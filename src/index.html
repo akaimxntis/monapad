@@ -621,7 +621,7 @@
         width: 1px;
         background: var(--color3);
       }
-      #drop-indicator + .tab:not(.active)::after {
+      .tab:first-of-type:not(.active)::after {
         content: "";
         position: absolute;
         left: -1px;
@@ -1385,6 +1385,8 @@
       }
       #notes-panel {
         position: fixed;
+        display: flex;
+        flex-direction: column;
         top: 0;
         left: 0;
         z-index: 9995;
@@ -1404,7 +1406,6 @@
       }
       body.notes-panel-open #notes-panel {
         transform: translateX(0);
-        overflow-y: auto;
       }
       body.notes-panel-open:not(.status-bar-visible) #notes-panel {
         height: 100vh;
@@ -1450,14 +1451,10 @@
         pointer-events: none;
       }
       #notes-panel-tools {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        align-content: flex-start;
-        gap: 5px;
-        padding: 0 6px 0 10px;
-        margin: 5px 0 10px 0;
-        height: 58px;
+        flex: 0 0 auto;
+        display: block;
+        padding: 0 10px;
+        margin: 10px 0;
         box-sizing: border-box;
       }
       #notes-search {
@@ -1552,6 +1549,9 @@
       .codicon.codicon-close::before {
         content: "\ea76";
       }
+      .codicon.codicon-add::before {
+        content: "\ea7f";
+      }
       .codicon.codicon-refresh::before {
         content: "\eb37";
       }
@@ -1573,10 +1573,17 @@
         background: color-mix(in srgb, var(--highlight) 25%, transparent);
         outline: 1px solid var(--highlight);
       }
-      #notes-search-actionbar {
+      #notes-search-section {
+        width: 100%;
+        min-width: 0;
         display: flex;
-        justify-content: flex-end;
-        flex: 0 0 100%;
+        flex-direction: column;
+        gap: 5px;
+      }
+      #notes-search-actionbar,
+      #notes-list-actionbar {
+        display: flex;
+        align-items: center;
         list-style: none;
         gap: 2px;
         margin: -2px 0 0 0;
@@ -1584,10 +1591,33 @@
         height: 22px;
         box-sizing: border-box;
       }
-      #notes-search-actionbar li {
+      #notes-search-actionbar {
+        padding: 0 0 0 10px;
+      }
+      #notes-list-actionbar {
+        flex: 0 0 auto;
+        padding: 0 10px 0 20px;
+        margin: 10px 0 5px 0;
+      }
+      body.notes-search-active #notes-list-actionbar {
+        display: none;
+      }
+      #notes-search-actionbar li,
+      #notes-list-actionbar li {
         display: flex;
       }
-      .notes-search-action {
+      .notes-panel-actionbar-label {
+        flex: 1 1 auto;
+        min-width: 0;
+        color: var(--grayOut);
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 22px;
+        letter-spacing: 0;
+        text-transform: uppercase;
+        user-select: none;
+      }
+      .notes-panel-action {
         width: 22px;
         height: 22px;
         border: none;
@@ -1601,50 +1631,51 @@
         line-height: 1;
         cursor: pointer;
       }
-      .notes-search-action.codicon[class*="codicon-"] {
+      .notes-panel-action.codicon[class*="codicon-"] {
         font-size: 16px;
         line-height: 1;
       }
-      .notes-search-action:hover:not(:disabled) {
+      .notes-panel-action:hover:not(:disabled) {
         background: var(--color3);
         color: var(--editorText);
       }
-      .notes-search-action:disabled {
+      .notes-panel-action:disabled {
         opacity: 0.45;
         cursor: default;
       }
-      #notes-add {
-        display: flex;
-        flex-shrink: 0;
-        background: none;
-        color: var(--editorText);
-        border: none;
-        cursor: pointer;
-        align-items: center;
-        justify-content: center;
-        width: 26px;
-        height: 26px;
-        border-radius: 5px;
-      }
-      #notes-add:hover {
-        background: var(--color3);
-      }
       #notes-list {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
         padding: 0 0 115px 0;
       }
       body.notes-search-active #notes-list {
         display: none;
       }
       #notes-search-results {
+        flex: 1 1 auto;
+        min-height: 0;
         display: none;
-        padding: 0 0 115px 0;
+        flex-direction: column;
         font-size: 13px;
         color: var(--editorText);
       }
       body.notes-search-active #notes-search-results {
+        display: flex;
+      }
+      #notes-search-results-list {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-anchor: none;
+        display: none;
+        padding: 0 0 115px 0;
+      }
+      body.notes-search-active #notes-search-results-list {
         display: block;
       }
       .notes-search-summary {
+        flex: 0 0 auto;
         height: 24px;
         line-height: 24px;
         padding: 0 10px 0 20px;
@@ -1660,11 +1691,15 @@
         line-height: 1.4;
       }
       .notes-search-file {
+        position: sticky;
+        top: 0;
+        z-index: 2;
         display: flex;
         align-items: center;
         height: 28px;
         padding: 0 8px 0 10px;
         box-sizing: border-box;
+        background: var(--color2);
         cursor: default;
       }
       .notes-search-file:hover,
@@ -1679,12 +1714,46 @@
         font-size: 10px;
         line-height: 1;
       }
-      .notes-search-file-title {
+      .notes-search-file-label {
         min-width: 0;
         flex: 1 1 auto;
+        display: flex;
+        align-items: baseline;
+        overflow: hidden;
+      }
+      .notes-search-file-title {
+        min-width: 0;
+        flex: 0 1 auto;
+        max-width: 100%;
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
+      }
+      .notes-search-file.note-target .notes-search-file-title {
+        color: var(--highlight);
+      }
+      .notes-search-file-path {
+        display: none;
+        min-width: 0;
+        flex: 1 1 auto;
+        margin-left: 5px;
+        color: var(--grayOut);
+        font-size: 11px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .notes-search-file-path:empty {
+        display: none;
+      }
+      .notes-search-file.show-path .notes-search-file-path {
+        display: block;
+      }
+      .notes-search-file.show-path .notes-search-file-title {
+        flex: 0 0 auto;
+        max-width: none;
+        overflow: visible;
+        text-overflow: clip;
       }
       .notes-search-file:hover .notes-search-count {
         display: none;
@@ -1717,6 +1786,7 @@
         min-width: 18px;
         height: 18px;
         padding: 0 6px;
+        margin-left: 3px;
         border-radius: 9px;
         box-sizing: border-box;
         background: var(--vscode-badge-background, var(--color3));
@@ -1747,6 +1817,9 @@
         white-space: nowrap;
         font-family: "Iosevka", "Migu 1M", monospace;
         font-size: 12px;
+      }
+      .notes-search-match:not(.preview-ready) .notes-search-preview {
+        visibility: hidden;
       }
       .notes-search-before {
         flex: 0 0 auto;
@@ -2079,9 +2152,8 @@
         </button>
 
         <div id="tabs-container">
-          <div id="tabs">
-            <div id="drop-indicator"></div>
-          </div>
+          <div id="tabs"></div>
+          <div id="drop-indicator"></div>
 
           <button id="add-tab" aria-label="Add Tab">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 11.95 11.95" width="13" height="13">
@@ -2210,7 +2282,7 @@
           </svg>
         </button>
         <button id="toggleNotesPanelBtn">
-          <span class="label">Notes</span>
+          <span class="label">Side Bar</span>
           <span class="shortcut">Ctrl + B</span>
         </button>
         <button id="settingsBtn">
@@ -2267,7 +2339,7 @@
       </div>
 
       <!-- notes panel -->
-      <aside id="notes-panel" class="scrollable" aria-hidden="true">
+      <aside id="notes-panel" aria-hidden="true">
         <button id="notes-panel-menu-button" aria-label="Menu">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15.16 7.2" width="16" height="8">
             <line
@@ -2293,7 +2365,7 @@
           </svg>
         </button>
         <div id="notes-panel-drag-fill"></div>
-        <button id="notes-panel-close" aria-label="Close Notes">
+        <button id="notes-panel-close" aria-label="Close Side Bar">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8.74 8.74" width="10" height="10">
             <line
               x1="8.24"
@@ -2318,83 +2390,83 @@
           </svg>
         </button>
         <div id="notes-panel-tools">
-          <ul id="notes-search-actionbar" aria-label="Search Actions">
-            <li>
-              <button
-                class="notes-search-action codicon codicon-refresh"
-                id="notes-search-refresh"
-                type="button"
-                aria-label="Refresh"
-              ></button>
-            </li>
-            <li>
-              <button
-                class="notes-search-action codicon codicon-clear-all"
-                id="notes-search-clear"
-                type="button"
-                aria-label="Clear Search Results"
-              ></button>
-            </li>
-            <li>
-              <button
-                class="notes-search-action codicon codicon-collapse-all"
-                id="notes-search-collapse"
-                type="button"
-                aria-label="Collapse All"
-              ></button>
-            </li>
-          </ul>
-          <div id="notes-search-wrap">
-            <input id="notes-search" type="text" placeholder="" spellcheck="false" />
-            <span id="notes-search-placeholder" aria-hidden="true"></span>
-            <div id="notes-search-actions" aria-hidden="false">
-              <button
-                class="notes-search-toggle codicon codicon-case-sensitive"
-                id="notes-search-case"
-                type="button"
-                aria-label="Match Case"
-              ></button>
-              <button
-                class="notes-search-toggle codicon codicon-whole-word"
-                id="notes-search-word"
-                type="button"
-                aria-label="Match Whole Word"
-              ></button>
-              <button
-                class="notes-search-toggle codicon codicon-regex"
-                id="notes-search-regex"
-                type="button"
-                aria-label="Use Regular Expression"
-              ></button>
+          <div id="notes-search-section">
+            <ul id="notes-search-actionbar" aria-label="Search Actions">
+              <li class="notes-panel-actionbar-label" id="notes-search-heading">Search</li>
+              <li>
+                <button
+                  class="notes-panel-action codicon codicon-refresh"
+                  id="notes-search-refresh"
+                  type="button"
+                  aria-label="Refresh"
+                ></button>
+              </li>
+              <li>
+                <button
+                  class="notes-panel-action codicon codicon-clear-all"
+                  id="notes-search-clear"
+                  type="button"
+                  aria-label="Clear Search Results"
+                ></button>
+              </li>
+              <li>
+                <button
+                  class="notes-panel-action codicon codicon-collapse-all"
+                  id="notes-search-collapse"
+                  type="button"
+                  aria-label="Collapse All"
+                ></button>
+              </li>
+            </ul>
+            <div id="notes-search-wrap">
+              <input id="notes-search" type="text" placeholder="" spellcheck="false" />
+              <span id="notes-search-placeholder" aria-hidden="true"></span>
+              <div id="notes-search-actions" aria-hidden="false">
+                <button
+                  class="notes-search-toggle codicon codicon-case-sensitive"
+                  id="notes-search-case"
+                  type="button"
+                  aria-label="Match Case"
+                ></button>
+                <button
+                  class="notes-search-toggle codicon codicon-whole-word"
+                  id="notes-search-word"
+                  type="button"
+                  aria-label="Match Whole Word"
+                ></button>
+                <button
+                  class="notes-search-toggle codicon codicon-regex"
+                  id="notes-search-regex"
+                  type="button"
+                  aria-label="Use Regular Expression"
+                ></button>
+              </div>
             </div>
           </div>
-          <button id="notes-add" aria-label="New Note">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10.23 10.23" width="13" height="13">
-              <line
-                x1="5.12"
-                y1=".5"
-                x2="5.12"
-                y2="9.73"
-                fill="none"
-                stroke="#fff"
-                stroke-linecap="round"
-                stroke-miterlimit="10"
-              />
-              <line
-                x1=".5"
-                y1="5.12"
-                x2="9.73"
-                y2="5.12"
-                fill="none"
-                stroke="#fff"
-                stroke-linecap="round"
-                stroke-miterlimit="10"
-              />
-            </svg>
-          </button>
         </div>
-        <div id="notes-list"></div>
-        <div id="notes-search-results"></div>
+        <ul id="notes-list-actionbar" aria-label="Notes Actions">
+          <li class="notes-panel-actionbar-label" id="notes-list-heading">Notes</li>
+          <li>
+            <button
+              class="notes-panel-action codicon codicon-add"
+              id="notes-add"
+              type="button"
+              aria-label="New Note"
+            ></button>
+          </li>
+          <li>
+            <button
+              class="notes-panel-action codicon codicon-refresh"
+              id="notes-list-refresh"
+              type="button"
+              aria-label="Refresh"
+            ></button>
+          </li>
+        </ul>
+        <div id="notes-list" class="scrollable"></div>
+        <div id="notes-search-results">
+          <div id="notes-search-results-list" class="scrollable"></div>
+        </div>
       </aside>
 
       <!-- note context menu -->

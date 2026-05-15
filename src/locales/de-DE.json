@@ -29,6 +29,7 @@
     "print": "Drucken",
     "settings": "Einstellungen",
     "notes": "Notizen",
+    "sideBar": "Seitenleiste",
     "theme": "Designs",
     "about": "Über",
     "onyx": "Onyx",
@@ -124,8 +125,10 @@
   },
   "notePanel": {
     "search": "Suchen",
+    "notesSection": "Notizen",
+    "searchSection": "Tabs & Notizen suchen",
     "newNote": "Neue Notiz",
-    "closePanel": "Notizen schließen",
+    "closePanel": "Seitenleiste schließen",
     "copyText": "Text kopieren",
     "duplicate": "Duplizieren",
     "convertToUntitled": "In unbenannt umwandeln",
@@ -145,6 +148,6 @@
     "searching": "Suche...",
     "noResults": "Keine Ergebnisse gefunden",
     "searchFailed": "Suche fehlgeschlagen",
-    "searchSummary": "{{count}} Ergebnisse in {{notes}} Notizen"
+    "searchSummary": "{{count}} Ergebnisse in {{items}} Elementen"
   }
 }

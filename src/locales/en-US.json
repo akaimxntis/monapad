@@ -29,6 +29,7 @@
     "print": "Print",
     "settings": "Settings",
     "notes": "Notes",
+    "sideBar": "Side Bar",
     "theme": "Themes",
     "about": "About",
     "onyx": "Onyx",
@@ -89,8 +90,10 @@
   },
   "notePanel": {
     "search": "Search",
+    "notesSection": "Notes",
+    "searchSection": "Search Tabs & Notes",
     "newNote": "New Note",
-    "closePanel": "Close Notes",
+    "closePanel": "Close Side Bar",
     "copyText": "Copy Text",
     "duplicate": "Duplicate",
     "convertToUntitled": "Convert to Untitled",
@@ -110,7 +113,7 @@
     "searching": "Searching...",
     "noResults": "No results found",
     "searchFailed": "Search failed",
-    "searchSummary": "{{count}} results in {{notes}} notes"
+    "searchSummary": "{{count}} results in {{items}} items"
   },
   "settings": {
     "font": "Font",
