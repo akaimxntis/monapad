@@ -69,6 +69,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   reorderNotes: (payload) => ipcRenderer.invoke("notes:reorder", payload),
   noteExists: (noteId) => ipcRenderer.invoke("notes:exists", noteId),
   listNotes: () => ipcRenderer.invoke("notes:list"),
+  refreshNotesIndex: () => ipcRenderer.invoke("notes:refresh-index"),
   onWindowFocus: (callback) => ipcRenderer.on("window-focus", (event, focused) => callback(focused)),
   onAttemptCloseWindow: (callback) => ipcRenderer.on("attempt-close-window", callback),
 

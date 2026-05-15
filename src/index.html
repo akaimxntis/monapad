@@ -1452,10 +1452,12 @@
       #notes-panel-tools {
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
+        align-content: flex-start;
         gap: 5px;
         padding: 0 6px 0 10px;
         margin: 5px 0 10px 0;
-        height: 35px;
+        height: 58px;
         box-sizing: border-box;
       }
       #notes-search {
@@ -1550,6 +1552,18 @@
       .codicon.codicon-close::before {
         content: "\ea76";
       }
+      .codicon.codicon-refresh::before {
+        content: "\eb37";
+      }
+      .codicon.codicon-clear-all::before {
+        content: "\eabf";
+      }
+      .codicon.codicon-collapse-all::before {
+        content: "\eac5";
+      }
+      .codicon.codicon-expand-all::before {
+        content: "\eb95";
+      }
       .notes-search-toggle:hover,
       .notes-search-toggle.active {
         background: var(--color3);
@@ -1558,6 +1572,46 @@
       .notes-search-toggle.active {
         background: color-mix(in srgb, var(--highlight) 25%, transparent);
         outline: 1px solid var(--highlight);
+      }
+      #notes-search-actionbar {
+        display: flex;
+        justify-content: flex-end;
+        flex: 0 0 100%;
+        list-style: none;
+        gap: 2px;
+        margin: -2px 0 0 0;
+        padding: 0;
+        height: 22px;
+        box-sizing: border-box;
+      }
+      #notes-search-actionbar li {
+        display: flex;
+      }
+      .notes-search-action {
+        width: 22px;
+        height: 22px;
+        border: none;
+        border-radius: 5px;
+        padding: 0;
+        background: transparent;
+        color: var(--grayOut);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .notes-search-action.codicon[class*="codicon-"] {
+        font-size: 16px;
+        line-height: 1;
+      }
+      .notes-search-action:hover:not(:disabled) {
+        background: var(--color3);
+        color: var(--editorText);
+      }
+      .notes-search-action:disabled {
+        opacity: 0.45;
+        cursor: default;
       }
       #notes-add {
         display: flex;
@@ -2264,6 +2318,32 @@
           </svg>
         </button>
         <div id="notes-panel-tools">
+          <ul id="notes-search-actionbar" aria-label="Search Actions">
+            <li>
+              <button
+                class="notes-search-action codicon codicon-refresh"
+                id="notes-search-refresh"
+                type="button"
+                aria-label="Refresh"
+              ></button>
+            </li>
+            <li>
+              <button
+                class="notes-search-action codicon codicon-clear-all"
+                id="notes-search-clear"
+                type="button"
+                aria-label="Clear Search Results"
+              ></button>
+            </li>
+            <li>
+              <button
+                class="notes-search-action codicon codicon-collapse-all"
+                id="notes-search-collapse"
+                type="button"
+                aria-label="Collapse All"
+              ></button>
+            </li>
+          </ul>
           <div id="notes-search-wrap">
             <input id="notes-search" type="text" placeholder="" spellcheck="false" />
             <span id="notes-search-placeholder" aria-hidden="true"></span>

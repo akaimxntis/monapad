@@ -1064,6 +1064,49 @@ ipcMain.handle("notes:list", async () => {
   return index.notes;
 });
 
+ipcMain.handle("notes:refresh-index", async () => {
+  const notesDir = await ensureNotesDir();
+  const index = await readNotesIndex();
+  const existingById = new Map(index.notes.map((note) => [note.id, note]));
+  const fileNames = await fs.promises.readdir(notesDir).catch(() => []);
+  const noteIds = new Set([
+    ...index.notes.map((note) => note.id).filter(isSafeNoteId),
+    ...fileNames
+      .filter((fileName) => fileName.endsWith(".txt"))
+      .map((fileName) => path.basename(fileName, ".txt"))
+      .filter(isSafeNoteId),
+  ]);
+  const nextNotes = [];
+
+  for (const noteId of noteIds) {
+    const fileName = `${noteId}.txt`;
+    const notePath = path.join(notesDir, fileName);
+    try {
+      const [content, stat] = await Promise.all([
+        fs.promises.readFile(notePath, "utf8"),
+        fs.promises.stat(notePath),
+      ]);
+      const existing = existingById.get(noteId);
+      nextNotes.push({
+        id: noteId,
+        fileName,
+        title: getNoteTitleFromContent(content),
+        createdAt: existing?.createdAt || stat.birthtimeMs || stat.ctimeMs || Date.now(),
+        updatedAt: Math.max(existing?.updatedAt || 0, stat.mtimeMs || 0) || Date.now(),
+        pinned: Boolean(existing?.pinned),
+        order: Number.isFinite(existing?.order) ? existing.order : Number.MAX_SAFE_INTEGER,
+        contentBytes: Buffer.byteLength(content, "utf8"),
+      });
+    } catch {
+      // Missing or unreadable notes are dropped from the refreshed index.
+    }
+  }
+
+  index.notes = normalizeNotesOrder(nextNotes);
+  await writeNotesIndex(index);
+  return index.notes;
+});
+
 async function cleanupEmptyNotes() {
   const notesDir = await ensureNotesDir();
   const index = await readNotesIndex();

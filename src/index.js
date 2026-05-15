@@ -38,6 +38,9 @@ const notesSearchResults = document.getElementById("notes-search-results");
 const notesSearchCaseButton = document.getElementById("notes-search-case");
 const notesSearchWordButton = document.getElementById("notes-search-word");
 const notesSearchRegexButton = document.getElementById("notes-search-regex");
+const notesSearchRefreshButton = document.getElementById("notes-search-refresh");
+const notesSearchClearButton = document.getElementById("notes-search-clear");
+const notesSearchCollapseButton = document.getElementById("notes-search-collapse");
 const notesList = document.getElementById("notes-list");
 const noteContextMenu = document.getElementById("note-context-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
@@ -215,6 +218,7 @@ let noteSearchState = {
   results: [],
   totalMatches: 0,
   totalNotes: 0,
+  allCollapsed: false,
   dismissedMatches: new Set(),
 };
 const noteContentCache = new Map();
@@ -2854,6 +2858,7 @@ function setNotesPanelOpen(open) {
   document.body.classList.toggle("notes-panel-open", open);
   notesPanel?.setAttribute("aria-hidden", open ? "false" : "true");
   updateEditorLeftMargin();
+  updateNoteSearchActionState();
   if (open) {
     closeContextMenus({ focus: false });
     renderNotesList();
@@ -2882,6 +2887,25 @@ function updateEditorLeftMargin() {
 function toggleNotesPanel() {
   setNotesPanelOpen(!document.body.classList.contains("notes-panel-open"));
 }
+
+function openNotesSearchPanel() {
+  setNotesPanelOpen(true);
+  requestAnimationFrame(() => {
+    notesSearchInput?.focus();
+    notesSearchInput?.select();
+  });
+}
+
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (!((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === "KeyF")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openNotesSearchPanel();
+  },
+  true,
+);
 
 function toggleMainMenuFromButton(e) {
   e.stopPropagation();
@@ -3679,7 +3703,7 @@ function updateStatusBar() {
 
   if (currentTab?.isNote) {
     const updated = formatNoteUpdatedAt(currentTab.noteUpdatedAt);
-    const noteStatus = updated ? `${updated} | Note: ${currentTab.name}` : `Note: ${currentTab.name}`;
+    const noteStatus = updated ? `${updated} • Note: ${currentTab.name}` : `Note: ${currentTab.name}`;
     statusLeft.textContent = noteStatus;
     statusLeft.title = currentTab.name;
   } else {
@@ -5515,7 +5539,7 @@ async function openNoteById(noteId, options = {}) {
   }
 }
 
-async function renderNotesList() {
+async function renderNotesList({ scheduleSearch = true } = {}) {
   if (!notesList) return;
   const notes = await window.electronAPI.listNotes();
   notesIndexCache = sortNotesForPanel(Array.isArray(notes) ? notes : []);
@@ -5565,7 +5589,8 @@ async function renderNotesList() {
     notesList.appendChild(item);
   }
 
-  if (isNoteSearchActive()) scheduleNoteSearch();
+  updateNoteSearchActionState();
+  if (scheduleSearch && isNoteSearchActive()) scheduleNoteSearch();
 }
 
 notesSearchInput?.addEventListener("input", () => {
@@ -5573,6 +5598,7 @@ notesSearchInput?.addEventListener("input", () => {
   noteSearchHistoryDraft = "";
   updateNoteSearchPlaceholder(true);
   noteSearchState.dismissedMatches.clear();
+  noteSearchState.allCollapsed = false;
   if (!getNoteSearchQuery()) {
     clearNoteSearchResults();
     return;
@@ -5594,8 +5620,7 @@ notesSearchInput?.addEventListener("keydown", (e) => {
 
   if (e.key === "Escape" && getNoteSearchQuery()) {
     e.preventDefault();
-    notesSearchInput.value = "";
-    clearNoteSearchResults();
+    clearNoteSearchInput();
     return;
   }
 
@@ -5635,6 +5660,23 @@ notesSearchWordButton?.addEventListener("click", () => {
 notesSearchRegexButton?.addEventListener("click", () => {
   toggleNoteSearchOption("regex");
 });
+
+notesSearchRefreshButton?.addEventListener("click", async () => {
+  const focusSearchAfterRefresh = isNoteSearchActive();
+  await refreshNotesPanelNow();
+  if (focusSearchAfterRefresh) notesSearchInput?.focus();
+});
+
+notesSearchClearButton?.addEventListener("click", () => {
+  clearNoteSearchInput();
+  notesSearchInput?.focus();
+});
+
+notesSearchCollapseButton?.addEventListener("click", () => {
+  toggleNoteSearchCollapseAll();
+  notesSearchInput?.focus();
+});
+
 document.addEventListener("keydown", (e) => {
   if (!document.body.classList.contains("notes-panel-open") || document.activeElement === notesSearchInput) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
@@ -5693,6 +5735,7 @@ function isNoteSearchActive() {
 
 function setNoteSearchActive(active) {
   document.body.classList.toggle("notes-search-active", Boolean(active));
+  updateNoteSearchActionState();
 }
 
 function getNoteSearchLabel(key, fallback) {
@@ -5744,6 +5787,7 @@ function setNoteSearchInputValue(value) {
   notesSearchInput.setSelectionRange(value.length, value.length);
   updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
   noteSearchState.dismissedMatches.clear();
+  noteSearchState.allCollapsed = false;
   if (!value) {
     clearNoteSearchResults();
     return;
@@ -5786,10 +5830,41 @@ function setNoteSearchButtonLabel(button, labelKey, fallback, shortcut) {
   button.setAttribute("aria-label", label);
 }
 
+function setNoteSearchActionLabel(button, labelKey, fallback) {
+  if (!button) return;
+  const label = getNoteSearchLabel(labelKey, fallback);
+  button.title = label;
+  button.setAttribute("aria-label", label);
+}
+
 function updateNoteSearchLabels() {
   setNoteSearchButtonLabel(notesSearchCaseButton, "matchCase", "Match Case", "Alt+C");
   setNoteSearchButtonLabel(notesSearchWordButton, "matchWholeWord", "Match Whole Word", "Alt+W");
   setNoteSearchButtonLabel(notesSearchRegexButton, "useRegex", "Use Regular Expression", "Alt+R");
+  setNoteSearchActionLabel(notesSearchRefreshButton, "refresh", "Refresh");
+  setNoteSearchActionLabel(notesSearchClearButton, "clearSearchResults", "Clear Search Results");
+  setNoteSearchActionLabel(
+    notesSearchCollapseButton,
+    noteSearchState.allCollapsed ? "expandAll" : "collapseAll",
+    noteSearchState.allCollapsed ? "Expand All" : "Collapse All",
+  );
+}
+
+function hasNoteSearchResults() {
+  return Boolean(isNoteSearchActive() && notesSearchResults?.querySelector(".notes-search-file"));
+}
+
+function updateNoteSearchActionState() {
+  updateNoteSearchLabels();
+  if (notesSearchRefreshButton)
+    notesSearchRefreshButton.disabled = !document.body.classList.contains("notes-panel-open");
+  if (notesSearchClearButton) notesSearchClearButton.disabled = !isNoteSearchActive() && !noteSearchState.totalMatches;
+  if (notesSearchCollapseButton) {
+    notesSearchCollapseButton.disabled = !hasNoteSearchResults();
+    notesSearchCollapseButton.classList.toggle("codicon-collapse-all", !noteSearchState.allCollapsed);
+    notesSearchCollapseButton.classList.toggle("codicon-expand-all", noteSearchState.allCollapsed);
+    notesSearchCollapseButton.setAttribute("aria-pressed", String(noteSearchState.allCollapsed));
+  }
 }
 
 function updateNoteSearchToggleState() {
@@ -5800,11 +5875,13 @@ function updateNoteSearchToggleState() {
   notesSearchWordButton?.setAttribute("aria-pressed", String(noteSearchState.wholeWord));
   notesSearchRegexButton?.classList.toggle("active", noteSearchState.regex);
   notesSearchRegexButton?.setAttribute("aria-pressed", String(noteSearchState.regex));
+  updateNoteSearchActionState();
 }
 
 function toggleNoteSearchOption(option, focusInput = true) {
   noteSearchState[option] = !noteSearchState[option];
   noteSearchState.dismissedMatches.clear();
+  noteSearchState.allCollapsed = false;
   updateNoteSearchToggleState();
   if (isNoteSearchActive()) scheduleNoteSearch();
   if (focusInput) notesSearchInput?.focus();
@@ -5828,16 +5905,80 @@ function scheduleNoteSearch() {
   }, NOTE_SEARCH_DEBOUNCE_MS);
 }
 
+async function refreshNotesPanelNow() {
+  if (noteSearchTimer) {
+    clearTimeout(noteSearchTimer);
+    noteSearchTimer = null;
+  }
+  const dirtyNoteTabs = tabData.filter((tab) => {
+    if (!tab?.isNote || !tab.noteId) return false;
+    const content = tab.model?.getValue() ?? tab.content ?? "";
+    return tab.noteDirty || content !== tab.originalContent;
+  });
+  for (const tab of dirtyNoteTabs) {
+    await writeNoteTab(tab, tab.model?.getValue() ?? tab.content ?? "", true);
+  }
+  if (window.electronAPI.refreshNotesIndex) {
+    notesIndexCache = sortNotesForPanel(await window.electronAPI.refreshNotesIndex());
+  }
+  noteContentCache.clear();
+  noteSearchState.dismissedMatches.clear();
+  noteSearchState.allCollapsed = false;
+  await renderNotesList({ scheduleSearch: false });
+  if (isNoteSearchActive()) {
+    await runNoteSearch();
+  } else {
+    updateNoteSearchActionState();
+  }
+}
+
+function syncNoteSearchCollapseStateFromDom() {
+  if (!notesSearchResults || !hasNoteSearchResults()) {
+    noteSearchState.allCollapsed = false;
+  } else {
+    const files = Array.from(notesSearchResults.querySelectorAll(".notes-search-file"));
+    noteSearchState.allCollapsed = files.length > 0 && files.every((file) => file.classList.contains("collapsed"));
+  }
+  updateNoteSearchActionState();
+}
+
+function setNoteSearchCollapseAll(collapsed) {
+  if (!notesSearchResults || !hasNoteSearchResults()) return;
+  noteSearchState.allCollapsed = Boolean(collapsed);
+  notesSearchResults.querySelectorAll(".notes-search-file").forEach((fileRow) => {
+    fileRow.classList.toggle("collapsed", noteSearchState.allCollapsed);
+  });
+  updateNoteSearchActionState();
+}
+
+function toggleNoteSearchCollapseAll() {
+  setNoteSearchCollapseAll(!noteSearchState.allCollapsed);
+}
+
 function clearNoteSearchResults() {
   noteSearchSeq++;
   resetNoteSearchPreviewObserver();
   noteSearchState.results = [];
   noteSearchState.totalMatches = 0;
   noteSearchState.totalNotes = 0;
+  noteSearchState.allCollapsed = false;
   noteSearchState.dismissedMatches.clear();
   notesSearchInput?.classList.remove("invalid");
   if (notesSearchResults) notesSearchResults.innerHTML = "";
   setNoteSearchActive(false);
+  updateNoteSearchActionState();
+}
+
+function clearNoteSearchInput() {
+  if (noteSearchTimer) {
+    clearTimeout(noteSearchTimer);
+    noteSearchTimer = null;
+  }
+  if (notesSearchInput) notesSearchInput.value = "";
+  noteSearchHistoryIndex = -1;
+  noteSearchHistoryDraft = "";
+  updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
+  clearNoteSearchResults();
 }
 
 function normalizeSearchPreviewText(text) {
@@ -6149,6 +6290,7 @@ function renderNoteSearchMessage(message) {
   item.className = "notes-search-message";
   item.textContent = message;
   notesSearchResults.appendChild(item);
+  updateNoteSearchActionState();
 }
 
 function renderNoteSearchResults() {
@@ -6173,7 +6315,7 @@ function renderNoteSearchResults() {
 
   for (const result of noteSearchState.results) {
     const fileRow = document.createElement("div");
-    fileRow.className = "notes-search-file";
+    fileRow.className = `notes-search-file${noteSearchState.allCollapsed ? " collapsed" : ""}`;
     fileRow.dataset.noteId = result.noteId;
 
     const twistie = document.createElement("span");
@@ -6205,6 +6347,7 @@ function renderNoteSearchResults() {
     fileRow.append(twistie, title, count, dismiss);
     fileRow.addEventListener("click", () => {
       fileRow.classList.toggle("collapsed");
+      syncNoteSearchCollapseStateFromDom();
     });
 
     for (const match of result.matches) {
@@ -6216,6 +6359,7 @@ function renderNoteSearchResults() {
     notesSearchResults.append(fileRow, matchGroup);
     rowsToObserve.forEach((row) => observeNoteSearchPreviewRow(row));
   }
+  updateNoteSearchActionState();
 }
 
 function createNoteSearchMatchElement(match) {
