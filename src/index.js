@@ -226,6 +226,7 @@ let noteSearchState = {
   results: [],
   totalMatches: 0,
   totalNotes: 0,
+  limitHit: false,
   allCollapsed: false,
   collapsedTargetIds: new Set(),
   dismissedMatches: new Set(),
@@ -584,6 +585,7 @@ function updateMenuLabels() {
   const notesSearch = document.getElementById("notes-search");
   if (notesSearch) updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
   updateNoteSearchLabels();
+  updateNoteSearchResultHeaderLabels();
   if (notesListHeading) notesListHeading.textContent = i18next.t("notePanel.notesSection");
   if (notesSearchHeading) {
     const label = i18next.t("notePanel.searchSection");
@@ -6016,6 +6018,7 @@ function scheduleNoteSearchAfterTabSetChange() {
 function getNoteSearchResultsSignature(results, totalMatches) {
   return JSON.stringify({
     totalMatches,
+    limitHit: noteSearchState.limitHit,
     results: results.map((result) => ({
       targetId: result.targetId,
       type: result.type,
@@ -6036,6 +6039,47 @@ function getNoteSearchResultsSignature(results, totalMatches) {
       })),
     })),
   });
+}
+
+function updateNoteSearchResultHeaderLabels() {
+  if (!notesSearchResults) return;
+  const summary = notesSearchResults.querySelector(".notes-search-summary");
+  if (summary) {
+    summary.textContent = i18next.isInitialized
+      ? i18next.t("notePanel.searchSummary", {
+          count: noteSearchState.totalMatches,
+          notes: noteSearchState.totalNotes,
+          items: noteSearchState.totalNotes,
+        })
+      : `${noteSearchState.totalMatches} results in ${noteSearchState.totalNotes} items`;
+  }
+
+  const warning = notesSearchResults.querySelector(".notes-search-warning");
+  if (warning) {
+    const icon = warning.querySelector(".notes-search-warning-icon");
+    warning.textContent = "";
+    if (icon) warning.appendChild(icon);
+    else {
+      const nextIcon = document.createElement("span");
+      nextIcon.className = "notes-search-warning-icon";
+      nextIcon.setAttribute("aria-hidden", "true");
+      warning.appendChild(nextIcon);
+    }
+    warning.appendChild(
+      document.createTextNode(
+        getNoteSearchLabel(
+          "searchLimitWarning",
+          "The result set only contains a subset of all matches. Be more specific in your search to narrow down the results.",
+        ),
+      ),
+    );
+  }
+
+  const message = notesSearchResultsList?.querySelector(".notes-search-message");
+  if (message) {
+    if (!getNoteSearchQuery()) return;
+    if (!noteSearchState.totalMatches) message.textContent = getNoteSearchLabel("noResults", "No results found");
+  }
 }
 
 async function refreshNotesListNow() {
@@ -6138,12 +6182,14 @@ function clearNoteSearchResults() {
   noteSearchState.results = [];
   noteSearchState.totalMatches = 0;
   noteSearchState.totalNotes = 0;
+  noteSearchState.limitHit = false;
   noteSearchResultsSignature = "";
   noteSearchState.allCollapsed = false;
   noteSearchState.collapsedTargetIds.clear();
   noteSearchState.dismissedMatches.clear();
   notesSearchInput?.classList.remove("invalid");
   notesSearchResults?.querySelector(".notes-search-summary")?.remove();
+  notesSearchResults?.querySelector(".notes-search-warning")?.remove();
   if (notesSearchResultsList) notesSearchResultsList.innerHTML = "";
   setNoteSearchActive(false);
   updateNoteSearchActionState();
@@ -6467,10 +6513,11 @@ async function getSearchableTargetContent(target) {
   return getSearchableNoteContent(target.note);
 }
 
-function searchTargetContent(target, content, query) {
+function searchTargetContent(target, content, query, maxMatches = NOTE_SEARCH_MAX_MATCHES) {
   const existingModel = target.type === "tab" || target.tab ? target.tab?.model : null;
   const model = existingModel || monaco.editor.createModel(content || "", "monapad");
   try {
+    const askMax = Math.max(1, maxMatches + 1);
     const matches = model.findMatches(
       query,
       model.getFullModelRange(),
@@ -6478,22 +6525,28 @@ function searchTargetContent(target, content, query) {
       noteSearchState.matchCase,
       noteSearchState.wholeWord ? NOTE_SEARCH_WORD_SEPARATORS : null,
       false,
-      NOTE_SEARCH_MAX_MATCHES,
+      askMax,
     );
 
-    return matches.map((match) => {
-      const range = match.range;
-      return {
-        id: getNoteSearchMatchId(target.targetId, range, query),
-        targetId: target.targetId,
-        type: target.type,
-        noteId: target.noteId,
-        tabId: target.tabId,
-        lineNumber: range.startLineNumber,
-        range,
-        preview: createNoteSearchPreview(model, match),
-      };
-    });
+    const limitHit = matches.length >= askMax;
+    const visibleMatches = limitHit ? matches.slice(0, maxMatches) : matches;
+
+    return {
+      limitHit,
+      matches: visibleMatches.map((match) => {
+        const range = match.range;
+        return {
+          id: getNoteSearchMatchId(target.targetId, range, query),
+          targetId: target.targetId,
+          type: target.type,
+          noteId: target.noteId,
+          tabId: target.tabId,
+          lineNumber: range.startLineNumber,
+          range,
+          preview: createNoteSearchPreview(model, match),
+        };
+      }),
+    };
   } finally {
     if (!existingModel) model.dispose();
   }
@@ -6547,36 +6600,54 @@ async function runNoteSearch() {
     const targets = createSearchTargets(notes);
     const results = [];
     let totalMatches = 0;
+    let limitHit = false;
 
-    await Promise.all(
-      targets.map(async (target) => {
-        if (target.type === "note" && target.note?.contentBytes === 0) return;
-        const content = await getSearchableTargetContent(target);
-        if (seq !== noteSearchSeq || content === null) return;
+    for (const target of targets) {
+      if (target.type === "note" && target.note?.contentBytes === 0) continue;
+      if (totalMatches >= NOTE_SEARCH_MAX_MATCHES) {
+        limitHit = true;
+        break;
+      }
 
-        const matches = searchTargetContent(target, content, query).filter(
-          (match) => !noteSearchState.dismissedMatches.has(match.id),
-        );
-        if (!matches.length) return;
+      const content = await getSearchableTargetContent(target);
+      if (seq !== noteSearchSeq || content === null) return;
 
-        totalMatches += matches.length;
-        results.push({
-          targetId: target.targetId,
-          type: target.type,
-          noteId: target.noteId,
-          tabId: target.tabId,
-          title: target.type === "note" ? truncateNoteTitle(target.title || getNoteTitleFromContent(content)) : target.title,
-          path: target.path,
-          fullPath: target.fullPath,
-          order: target.order,
-          matches,
-        });
-      }),
-    );
+      const remaining = NOTE_SEARCH_MAX_MATCHES - totalMatches;
+      const searchResult = searchTargetContent(target, content, query, remaining);
+      let matches = searchResult.matches.filter((match) => !noteSearchState.dismissedMatches.has(match.id));
+      if (searchResult.limitHit || matches.length > remaining) {
+        limitHit = true;
+        matches = matches.slice(0, remaining);
+      }
+      if (!matches.length) {
+        if (limitHit) break;
+        continue;
+      }
+
+      totalMatches += matches.length;
+      results.push({
+        targetId: target.targetId,
+        type: target.type,
+        noteId: target.noteId,
+        tabId: target.tabId,
+        title:
+          target.type === "note" ? truncateNoteTitle(target.title || getNoteTitleFromContent(content)) : target.title,
+        path: target.path,
+        fullPath: target.fullPath,
+        order: target.order,
+        matches,
+      });
+
+      if (limitHit || totalMatches >= NOTE_SEARCH_MAX_MATCHES) {
+        limitHit = true;
+        break;
+      }
+    }
 
     if (seq !== noteSearchSeq) return;
     results.sort((a, b) => a.order - b.order);
 
+    noteSearchState.limitHit = limitHit;
     const nextSignature = getNoteSearchResultsSignature(results, totalMatches);
     if (nextSignature === noteSearchResultsSignature) {
       updateNoteSearchActionState();
@@ -6590,6 +6661,7 @@ async function runNoteSearch() {
     );
     noteSearchState.totalMatches = totalMatches;
     noteSearchState.totalNotes = results.length;
+    noteSearchState.limitHit = limitHit;
     noteSearchResultsSignature = nextSignature;
     renderNoteSearchResults();
   } catch (error) {
@@ -6602,6 +6674,7 @@ function renderNoteSearchMessage(message) {
   if (!notesSearchResults || !notesSearchResultsList) return;
   resetNoteSearchPreviewObserver();
   notesSearchResults.querySelector(".notes-search-summary")?.remove();
+  notesSearchResults.querySelector(".notes-search-warning")?.remove();
   notesSearchResultsList.innerHTML = "";
   const item = document.createElement("div");
   item.className = "notes-search-message";
@@ -6614,6 +6687,7 @@ function renderNoteSearchResults() {
   if (!notesSearchResults || !notesSearchResultsList) return;
   resetNoteSearchPreviewObserver();
   notesSearchResults.querySelector(".notes-search-summary")?.remove();
+  notesSearchResults.querySelector(".notes-search-warning")?.remove();
   notesSearchResultsList.innerHTML = "";
 
   if (!noteSearchState.totalMatches) {
@@ -6631,6 +6705,17 @@ function renderNoteSearchResults() {
       })
     : `${noteSearchState.totalMatches} results in ${noteSearchState.totalNotes} items`;
   notesSearchResults.insertBefore(summary, notesSearchResultsList);
+
+  if (noteSearchState.limitHit) {
+    const warning = document.createElement("div");
+    warning.className = "notes-search-warning";
+    const icon = document.createElement("span");
+    icon.className = "notes-search-warning-icon";
+    icon.setAttribute("aria-hidden", "true");
+    warning.append(icon);
+    notesSearchResults.insertBefore(warning, notesSearchResultsList);
+  }
+  updateNoteSearchResultHeaderLabels();
 
   for (const result of noteSearchState.results) {
     const fileRow = document.createElement("div");
@@ -7526,8 +7611,7 @@ window.addEventListener("mousemove", (e) => {
   if (noteSearchDragState) {
     if (!noteSearchDragState.dragging) {
       const moved =
-        Math.abs(e.clientX - noteSearchDragState.startX) >= 5 ||
-        Math.abs(e.clientY - noteSearchDragState.startY) >= 5;
+        Math.abs(e.clientX - noteSearchDragState.startX) >= 5 || Math.abs(e.clientY - noteSearchDragState.startY) >= 5;
       if (!moved) return;
       noteSearchDragState.dragging = true;
       applyNoteSearchMatchDragRowStyle(noteSearchDragState.row);

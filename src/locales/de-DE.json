@@ -148,6 +148,7 @@
     "searching": "Suche...",
     "noResults": "Keine Ergebnisse gefunden",
     "searchFailed": "Suche fehlgeschlagen",
-    "searchSummary": "{{count}} Ergebnisse in {{items}} Elementen"
+    "searchSummary": "{{count}} Ergebnisse in {{items}} Elementen",
+    "searchLimitWarning": "Die Ergebnismenge enthält nur einen Teil aller Treffer. Formuliere die Suche genauer, um die Ergebnisse einzugrenzen."
   }
 }

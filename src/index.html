@@ -1685,6 +1685,24 @@
         text-overflow: ellipsis;
         box-sizing: border-box;
       }
+      .notes-search-warning {
+        flex: 0 0 auto;
+        padding: 0 10px 4px 20px;
+        color: var(--grayOut);
+        font-size: 12px;
+        line-height: 18px;
+        box-sizing: border-box;
+      }
+      .notes-search-warning-icon {
+        display: inline-block;
+        margin-right: 3px;
+        vertical-align: -3px;
+        color: var(--warn);
+        font: normal normal normal 16px/18px codicon;
+      }
+      .notes-search-warning-icon::before {
+        content: "\ea6c";
+      }
       .notes-search-message {
         padding: 12px 20px;
         color: var(--grayOut);

@@ -148,6 +148,7 @@
     "searching": "正在搜索...",
     "noResults": "未找到结果",
     "searchFailed": "搜索失败",
-    "searchSummary": "在 {{items}} 个项目中找到 {{count}} 个结果"
+    "searchSummary": "在 {{items}} 个项目中找到 {{count}} 个结果",
+    "searchLimitWarning": "结果集中只包含所有匹配项的一部分。请使用更具体的搜索条件来缩小结果范围。"
   }
 }

@@ -148,6 +148,7 @@
     "searching": "検索中...",
     "noResults": "検索結果はありません",
     "searchFailed": "検索に失敗しました",
-    "searchSummary": "{{count}} 件の結果 / {{items}} 項目"
+    "searchSummary": "{{count}} 件の結果 / {{items}} 項目",
+    "searchLimitWarning": "検索結果には一致項目の一部のみが含まれています。検索条件をより具体的にして結果を絞り込んでください。"
   }
 }

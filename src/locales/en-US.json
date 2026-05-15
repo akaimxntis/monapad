@@ -113,7 +113,8 @@
     "searching": "Searching...",
     "noResults": "No results found",
     "searchFailed": "Search failed",
-    "searchSummary": "{{count}} results in {{items}} items"
+    "searchSummary": "{{count}} results in {{items}} items",
+    "searchLimitWarning": "The result set only contains a subset of all matches. Be more specific in your search to narrow down the results."
   },
   "settings": {
     "font": "Font",
