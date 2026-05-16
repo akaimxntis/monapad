@@ -213,6 +213,8 @@ const GLOBAL_SEARCH_HOVER_MAX = 100;
 const GLOBAL_SEARCH_BEFORE_MAX_RATIO = 0.7;
 const GLOBAL_SEARCH_MATCH_MIN_RATIO = 0.3;
 const GLOBAL_SEARCH_HISTORY_LIMIT = 100;
+const GLOBAL_SEARCH_INPUT_MIN_HEIGHT = 26;
+const GLOBAL_SEARCH_INPUT_MAX_HEIGHT = 118;
 let globalSearchTimer = null;
 let globalSearchSeq = 0;
 let globalSearchPreviewFrame = null;
@@ -5825,9 +5827,19 @@ async function renderNotesList({ scheduleSearch = true } = {}) {
   if (scheduleSearch && isGlobalSearchActive()) scheduleGlobalSearch();
 }
 
-globalSearchInput?.addEventListener("input", () => {
+function resizeGlobalSearchInput() {
+  if (!globalSearchInput) return;
+  globalSearchInput.style.height = "auto";
+  const scrollHeight = globalSearchInput.scrollHeight || GLOBAL_SEARCH_INPUT_MIN_HEIGHT;
+  const nextHeight = clampNumber(scrollHeight, GLOBAL_SEARCH_INPUT_MIN_HEIGHT, GLOBAL_SEARCH_INPUT_MAX_HEIGHT);
+  globalSearchInput.style.height = `${nextHeight}px`;
+  globalSearchInput.style.overflowY = scrollHeight > GLOBAL_SEARCH_INPUT_MAX_HEIGHT ? "auto" : "hidden";
+}
+
+function handleGlobalSearchInputChange() {
   globalSearchHistoryIndex = -1;
   globalSearchHistoryDraft = "";
+  resizeGlobalSearchInput();
   updateGlobalSearchPlaceholder(true);
   globalSearchState.dismissedMatches.clear();
   globalSearchState.allCollapsed = false;
@@ -5838,15 +5850,46 @@ globalSearchInput?.addEventListener("input", () => {
   }
   setGlobalSearchActive(true);
   scheduleGlobalSearch();
-});
+}
+
+function insertGlobalSearchInputText(text) {
+  if (!globalSearchInput) return;
+  const value = globalSearchInput.value || "";
+  const start = globalSearchInput.selectionStart ?? value.length;
+  const end = globalSearchInput.selectionEnd ?? start;
+  globalSearchInput.value = `${value.slice(0, start)}${text}${value.slice(end)}`;
+  const nextPosition = start + text.length;
+  globalSearchInput.setSelectionRange(nextPosition, nextPosition);
+  handleGlobalSearchInputChange();
+}
+
+function shouldKeepGlobalSearchArrowInInput(key) {
+  if (!globalSearchInput || !globalSearchInput.value.includes("\n")) return false;
+  if (key === "ArrowUp") return (globalSearchInput.selectionStart ?? 0) > 0;
+  if (key === "ArrowDown") return (globalSearchInput.selectionEnd ?? 0) < globalSearchInput.value.length;
+  return false;
+}
+
+globalSearchInput?.addEventListener("input", handleGlobalSearchInputChange);
 
 globalSearchInput?.addEventListener("keydown", (e) => {
   if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    if (shouldKeepGlobalSearchArrowInInput(e.key)) {
+      e.stopPropagation();
+      return;
+    }
     if (showGlobalSearchHistoryValue(e.key === "ArrowUp" ? -1 : 1)) e.preventDefault();
     return;
   }
 
+  if (e.key === "Enter" && !e.altKey && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+    e.preventDefault();
+    insertGlobalSearchInputText("\n");
+    return;
+  }
+
   if (e.key === "Enter" && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+    e.preventDefault();
     addGlobalSearchHistory(getGlobalSearchQuery());
     return;
   }
@@ -5927,6 +5970,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 updateGlobalSearchToggleState();
+resizeGlobalSearchInput();
 
 function showNoteContextMenu(e, noteId) {
   e.preventDefault();
@@ -6017,6 +6061,7 @@ function setGlobalSearchInputValue(value) {
   if (!globalSearchInput) return;
   globalSearchInput.value = value;
   globalSearchInput.setSelectionRange(value.length, value.length);
+  resizeGlobalSearchInput();
   updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
   globalSearchState.dismissedMatches.clear();
   globalSearchState.allCollapsed = false;
@@ -6328,6 +6373,7 @@ function clearGlobalSearchInput() {
     globalSearchTimer = null;
   }
   if (globalSearchInput) globalSearchInput.value = "";
+  resizeGlobalSearchInput();
   globalSearchHistoryIndex = -1;
   globalSearchHistoryDraft = "";
   updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
@@ -6346,15 +6392,18 @@ function escapeSearchPreview(text, maxLength = GLOBAL_SEARCH_PREVIEW_MAX) {
 
 function createGlobalSearchPreview(model, match) {
   const range = match.range;
-  const line = model.getLineContent(range.startLineNumber);
-  const beforeFull = line.slice(0, range.startColumn - 1);
-  const inside = line.slice(range.startColumn - 1, Math.max(range.startColumn - 1, range.endColumn - 1));
-  const after = line.slice(range.endColumn - 1);
+  const startLine = model.getLineContent(range.startLineNumber);
+  const endLine = model.getLineContent(range.endLineNumber);
+  const beforeFull = startLine.slice(0, range.startColumn - 1);
+  const inside = model.getValueInRange(range);
+  const after = endLine.slice(range.endColumn - 1);
+  const fullLine =
+    range.startLineNumber === range.endLineNumber ? startLine : `${beforeFull}${inside}${after}`;
   return {
     fullBefore: normalizeSearchPreviewText(beforeFull).slice(-GLOBAL_SEARCH_PREVIEW_MAX),
     inside: escapeSearchPreview(inside || match.matches?.[0] || "", GLOBAL_SEARCH_PREVIEW_MAX),
     after: escapeSearchPreview(after, GLOBAL_SEARCH_PREVIEW_MAX),
-    fullLine: line,
+    fullLine,
   };
 }
 

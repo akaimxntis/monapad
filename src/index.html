@@ -1545,26 +1545,35 @@
       #global-search {
         flex: 1;
         min-width: 0;
-        height: 26px;
+        min-height: 26px;
+        max-height: 118px;
         box-sizing: border-box;
         background: var(--color1);
         color: var(--editorText);
         border: none;
         border-radius: 5px;
-        padding: 0 8px;
+        padding: 4px 8px;
         font: inherit;
         font-size: 14px;
+        line-height: 18px;
         user-select: text;
+        resize: none;
+        overflow: hidden;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
       #global-search::placeholder {
         color: var(--grayOut);
+      }
+      #global-search::-webkit-scrollbar {
+        display: none;
       }
       #global-search-wrap {
         flex: 1;
         min-width: 0;
         position: relative;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
       }
       #global-search {
         width: 100%;
@@ -2465,7 +2474,7 @@
               </li>
             </ul>
             <div id="global-search-wrap">
-              <input id="global-search" type="text" placeholder="" spellcheck="false" />
+              <textarea id="global-search" rows="1" wrap="soft" placeholder="" spellcheck="false"></textarea>
               <span id="global-search-placeholder" aria-hidden="true"></span>
               <div id="global-search-actions" aria-hidden="false">
                 <button
