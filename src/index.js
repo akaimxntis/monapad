@@ -215,13 +215,16 @@ const GLOBAL_SEARCH_MATCH_MIN_RATIO = 0.3;
 const GLOBAL_SEARCH_HISTORY_LIMIT = 100;
 const GLOBAL_SEARCH_INPUT_MIN_HEIGHT = 26;
 const GLOBAL_SEARCH_INPUT_MAX_HEIGHT = 118;
+const GLOBAL_SEARCH_IDLE_PREVIEW_BATCH = 16;
 let globalSearchTimer = null;
 let globalSearchSeq = 0;
 let globalSearchPreviewFrame = null;
+let globalSearchPreviewIdleHandle = null;
 let globalSearchFilePathFrame = null;
 let globalSearchMeasureContext = null;
 let globalSearchPreviewObserver = null;
 let globalSearchVisiblePreviewRows = new Set();
+let globalSearchIdlePreviewRows = new Set();
 let globalSearchHistory = [];
 let globalSearchHistoryIndex = -1;
 let globalSearchHistoryDraft = "";
@@ -6485,15 +6488,15 @@ function updateGlobalSearchPreviewElement(row) {
   const hit = row?.querySelector?.(".global-search-hit");
   const after = row?.querySelector?.(".global-search-after");
   const matchId = row?.dataset?.matchId;
-  if (!preview || !before || !hit || !after || !matchId) return;
+  if (!preview || !before || !hit || !after || !matchId) return false;
 
   const match =
     row.globalSearchMatch ||
     globalSearchState.results.flatMap((result) => result.matches).find((item) => item.id === matchId);
-  if (!match) return;
+  if (!match) return false;
 
   const width = preview.clientWidth;
-  if (!width) return;
+  if (!width) return false;
   const font = getGlobalSearchPreviewFont(preview);
   const beforeText = match.preview.fullBefore;
   const hitText = match.preview.inside;
@@ -6520,6 +6523,8 @@ function updateGlobalSearchPreviewElement(row) {
 
   applyGlobalSearchPreviewDisplay(row, display);
   globalSearchPreviewDisplayCache.set(matchId, display);
+  globalSearchIdlePreviewRows.delete(row);
+  return true;
 }
 
 function updateGlobalSearchPreviewElements() {
@@ -6537,6 +6542,61 @@ function scheduleGlobalSearchPreviewUpdate() {
     globalSearchPreviewFrame = null;
     updateGlobalSearchPreviewElements();
   });
+}
+
+function requestGlobalSearchIdleCallback(callback) {
+  if (typeof window.requestIdleCallback === "function") {
+    return window.requestIdleCallback(callback, { timeout: 600 });
+  }
+  return window.setTimeout(() => callback({ didTimeout: true, timeRemaining: () => 0 }), 32);
+}
+
+function cancelGlobalSearchIdleCallback(handle) {
+  if (handle === null) return;
+  if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(handle);
+  else window.clearTimeout(handle);
+}
+
+function isGlobalSearchRowInCollapsedGroup(row) {
+  const group = row?.closest?.(".global-search-match-group");
+  return Boolean(group?.previousElementSibling?.classList?.contains("collapsed"));
+}
+
+function processGlobalSearchIdlePreviewRows(deadline) {
+  globalSearchPreviewIdleHandle = null;
+  if (!globalSearchResultsList || !isGlobalSearchActive()) {
+    globalSearchIdlePreviewRows.clear();
+    return;
+  }
+
+  let processed = 0;
+  while (globalSearchIdlePreviewRows.size) {
+    if (
+      processed >= GLOBAL_SEARCH_IDLE_PREVIEW_BATCH ||
+      (processed > 0 && !deadline.didTimeout && deadline.timeRemaining() < 4)
+    ) {
+      break;
+    }
+
+    const row = globalSearchIdlePreviewRows.values().next().value;
+    globalSearchIdlePreviewRows.delete(row);
+    if (!row?.isConnected || row.classList.contains("preview-ready") || isGlobalSearchRowInCollapsedGroup(row)) continue;
+    updateGlobalSearchPreviewElement(row);
+    processed++;
+  }
+
+  if (globalSearchIdlePreviewRows.size) scheduleGlobalSearchIdlePreviewUpdate();
+}
+
+function scheduleGlobalSearchIdlePreviewUpdate() {
+  if (globalSearchPreviewIdleHandle !== null || !globalSearchIdlePreviewRows.size) return;
+  globalSearchPreviewIdleHandle = requestGlobalSearchIdleCallback(processGlobalSearchIdlePreviewRows);
+}
+
+function queueGlobalSearchIdlePreviewRow(row) {
+  if (!row || row.classList.contains("preview-ready")) return;
+  globalSearchIdlePreviewRows.add(row);
+  scheduleGlobalSearchIdlePreviewUpdate();
 }
 
 function updateGlobalSearchFilePathVisibility() {
@@ -6569,6 +6629,10 @@ function resetGlobalSearchPreviewObserver() {
     cancelAnimationFrame(globalSearchPreviewFrame);
     globalSearchPreviewFrame = null;
   }
+  if (globalSearchPreviewIdleHandle !== null) {
+    cancelGlobalSearchIdleCallback(globalSearchPreviewIdleHandle);
+    globalSearchPreviewIdleHandle = null;
+  }
   if (globalSearchFilePathFrame !== null) {
     cancelAnimationFrame(globalSearchFilePathFrame);
     globalSearchFilePathFrame = null;
@@ -6578,6 +6642,7 @@ function resetGlobalSearchPreviewObserver() {
     globalSearchPreviewObserver = null;
   }
   globalSearchVisiblePreviewRows.clear();
+  globalSearchIdlePreviewRows.clear();
 }
 
 function getGlobalSearchPreviewObserver() {
@@ -6606,6 +6671,7 @@ function getGlobalSearchPreviewObserver() {
 }
 
 function observeGlobalSearchPreviewRow(row) {
+  queueGlobalSearchIdlePreviewRow(row);
   const observer = getGlobalSearchPreviewObserver();
   if (!observer) {
     globalSearchVisiblePreviewRows.add(row);
