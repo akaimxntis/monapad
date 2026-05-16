@@ -75,6 +75,8 @@
         font-style: italic;
       }
       :root {
+        font-family: "Figtree", sans-serif;
+
         --color1: #000000; /* editor, modal background */
         --color2: #0c0c0e; /* toolbar, statusbar, menu, message background */
         --color3: #18181a; /* button hover, modal button */
@@ -88,7 +90,7 @@
         --window-top-safe-area: 1px; /* to prevent windows 11 border from overlapping the content, set to 0px if not needed */
         --toolbar-height: 35px;
         --status-bar-height: 25px;
-        --side-panel-width: 260px;
+        --side-panel-width: 240px;
         --editor-line-number-offset: 0px;
         --editor-side-panel-offset: 0px;
 
@@ -169,14 +171,31 @@
         --vscode-quickInputList-focusForeground: var(--editorText); /* forcus text */
       }
 
+      /*
+      :lang(en) body,
+      :lang(en-US) body,
+      :lang(de) body,
+      :lang(de-DE) body {
+        font-family: "Figtree", "Segoe UI", "Arial", sans-serif;
+      }
+      */
+
+      :lang(en) body,
+      :lang(en-US) body,
+      :lang(de) body,
+      :lang(de-DE) body,
+      :lang(ja) body,
+      :lang(ja-JP) body {
+        font-family: "Figtree", "Yu Gothic UI", "Meiryo", "Hiragino Sans", sans-serif;
+      }
+
+      :lang(zh) body,
+      :lang(zh-CN) body {
+        font-family: "Figtree", "Microsoft YaHei UI", "Yu Gothic UI", sans-serif;
+      }
+
       body {
         margin: 0;
-        font-family:
-          "figtree",
-          Yu Gothic UI,
-          Meiryo,
-          Hiragino Sans,
-          sans-serif;
         background: var(--color1);
         color: var(--editorText);
         overflow: hidden;
@@ -269,9 +288,9 @@
       #tab-context-menu button,
       #note-context-menu button {
         width: 100%;
-        height: 28px;
-        font-size: 14px;
-        line-height: 28px;
+        height: 26px;
+        font-size: 13px;
+        line-height: 26px;
       }
       .disabled {
         color: var(--grayOut) !important;
@@ -346,15 +365,16 @@
       #menu {
         position: fixed;
         top: calc(40px + var(--window-top-safe-area));
-        left: 0px;
+        left: 5px;
         background: var(--color2);
         display: none;
         z-index: 9998;
-        width: 260px;
+        width: 255px;
         padding: 5px 0;
         max-height: calc(100vh - 70px);
         overflow-y: auto;
         border: solid 1px var(--color3);
+        border-radius: 5px;
         user-select: none;
         box-sizing: border-box;
       }
@@ -411,16 +431,17 @@
       }
       #theme-menu {
         position: absolute;
-        left: 260px;
+        left: 255px;
         margin-left: 5px;
         background: var(--color2);
         display: none;
         z-index: 9998;
         width: fit-content;
         min-width: 120px;
-        max-width: min(300px, calc(100vw - 260px));
+        max-width: min(300px, calc(100vw - 255px));
         padding: 5px 0;
         border: solid 1px var(--color3);
+        border-radius: 5px;
         user-select: none;
         box-sizing: border-box;
         overflow-y: auto;
@@ -466,14 +487,15 @@
 
       #recent-menu {
         position: absolute;
-        left: 260px;
+        left: 255px;
         margin-left: 5px;
         background: var(--color2);
         display: none;
         z-index: 9998;
         padding: 5px 0;
         border: solid 1px var(--color3);
-        max-width: calc(100vw - 260px - 5px);
+        border-radius: 5px;
+        max-width: calc(100vw - 255px - 5px);
         min-width: 120px;
         user-select: none;
         box-sizing: border-box;
@@ -1083,6 +1105,7 @@
         justify-content: space-between;
         align-items: center;
         border: solid 1px var(--color3);
+        border-radius: 5px;
       }
 
       #confirm-save p,
@@ -1159,6 +1182,7 @@
         max-width: min(calc(100vw - 100px), 360px);
         max-height: calc(100vh - 100px);
         border: solid 1px var(--color3);
+        border-radius: 5px;
         font-size: 14px;
       }
       #about-main {
@@ -1210,6 +1234,7 @@
         background: var(--color1);
         color: var(--editorText);
         border: solid 1px var(--color3);
+        border-radius: 5px;
         font-size: 14px;
         overflow: hidden;
       }
@@ -1317,6 +1342,7 @@
         position: absolute;
         background: var(--color2);
         border: solid 1px var(--color3);
+        border-radius: 5px;
         padding: 5px 0;
         z-index: 9999;
         display: none;
@@ -1324,9 +1350,16 @@
         width: 220px;
         user-select: none;
       }
+      #tab-context-menu.menu {
+        width: 240px;
+      }
+      #note-context-menu.menu {
+        width: fit-content;
+      }
       #custom-context-menu button,
       #tab-context-menu button,
       #note-context-menu button {
+        display: flex;
         position: relative;
         background: none;
         color: var(--editorText);
@@ -1334,9 +1367,11 @@
         text-align: left;
         cursor: pointer;
         padding: 0 10px;
-        display: flex;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+      #tab-context-menu button {
+        justify-content: space-between;
       }
       #custom-context-menu button:hover,
       #tab-context-menu button:hover,
@@ -1349,13 +1384,6 @@
       #custom-context-menu button .label {
         display: inline-block;
         width: 50%;
-      }
-      #tab-context-menu button .label {
-        display: inline-block;
-        width: 70%;
-      }
-      #tab-context-menu button[data-action="openInNewWindow"] .label {
-        width: 100%;
       }
       #menu button .shortcut,
       #custom-context-menu button .shortcut,
@@ -2002,10 +2030,17 @@
         display: flex;
         justify-content: space-between;
         color: var(--grayOut);
-        margin: 0 0 10px 0;
+        margin: 0 0 5px 0;
         padding: 0 20px;
-        font-size: 14px;
-        font-weight: 500;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 22px;
+        letter-spacing: 0;
+        text-transform: uppercase;
+        user-select: none;
+      }
+      #settings-menu h1:not(:first-child) {
+        margin-top: 20px;
       }
       #settings-menu .reset {
         display: none;
@@ -2063,10 +2098,6 @@
         line-height: 28px;
         margin-bottom: 5px;
         font-size: 14px;
-      }
-
-      #settings-menu button {
-        margin-bottom: 5px;
       }
 
       #settings-menu .label {
@@ -2410,7 +2441,7 @@
         <div id="side-panel-tools">
           <div id="global-search-section">
             <ul id="global-search-actionbar" aria-label="Search Actions">
-              <li class="side-panel-actionbar-label" id="global-search-heading">Search</li>
+              <li class="side-panel-actionbar-label" id="global-search-heading">SEARCH</li>
               <li>
                 <button
                   class="side-panel-action codicon codicon-refresh"
@@ -2463,7 +2494,7 @@
           </div>
         </div>
         <ul id="notes-list-actionbar" aria-label="Notes Actions">
-          <li class="side-panel-actionbar-label" id="notes-list-heading">Notes</li>
+          <li class="side-panel-actionbar-label" id="notes-list-heading">NOTES</li>
           <li>
             <button
               class="side-panel-action codicon codicon-add"
@@ -2624,13 +2655,16 @@
         <div class="hr"></div>
         <button data-action="keepOpen" class="disabled">
           <span class="label">Keep Open</span>
+          <span class="shortcut">Ctrl + K, Enter</span>
         </button>
         <button data-action="togglePin">
           <span class="label">Pin</span>
+          <span class="shortcut">Ctrl + K, Shift + Enter</span>
         </button>
         <div class="hr"></div>
         <button data-action="reopenClosedTab" class="disabled">
           <span class="label">Reopen Closed Tab</span>
+          <span class="shortcut">Ctrl + Shift + T</span>
         </button>
         <button data-action="openInNewWindow">
           <span class="label">Open in New Window</span>
@@ -2655,7 +2689,6 @@
             </svg>
           </span>
         </h1>
-        <div class="hr"></div>
         <button id="line-highlight">
           <span>Line Highlight</span>
           <svg
@@ -2798,7 +2831,7 @@
         </div>
 
         <!-- Font -->
-        <h1 style="margin-top: 50px" class="font">
+        <h1 class="font">
           <span class="h1">Font</span>
           <span class="reset" title="Reset Settings">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 17 17">
@@ -2813,7 +2846,6 @@
             </svg>
           </span>
         </h1>
-        <div class="hr"></div>
         <div class="row select-row font-select-row">
           <select id="font-family-select" class="scrollable"></select>
         </div>
@@ -2862,8 +2894,7 @@
         </div>
 
         <!-- Custom Theme -->
-        <h1 style="margin: 50px 0 10px 0" id="settingsCustomTheme">Custom Theme</h1>
-        <div class="hr"></div>
+        <h1 id="settingsCustomTheme">Custom Theme</h1>
         <button id="openThemeFolder">Open Theme Folder</button>
 
         <p id="customThemeDescription" class="settings-info">
@@ -2872,8 +2903,7 @@
         </p>
 
         <!-- language -->
-        <h1 style="margin: 50px 0 10px 0" id="settingsLanguage">Language</h1>
-        <div class="hr"></div>
+        <h1 id="settingsLanguage">Language</h1>
         <div class="row select-row lang-select-row">
           <select id="langSwitcher">
             <option value="en">English</option>

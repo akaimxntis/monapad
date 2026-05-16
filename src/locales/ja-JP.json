@@ -126,7 +126,7 @@
   "sidePanel": {
     "search": "検索",
     "notesSection": "ノート",
-    "searchSection": "タブとノートを検索",
+    "searchSection": "検索",
     "newNote": "新規ノート",
     "closePanel": "サイドパネルを閉じる",
     "copyText": "全文コピー",

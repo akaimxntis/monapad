@@ -490,6 +490,23 @@ const langSwitcher = document.getElementById("langSwitcher");
 const savedLang = localStorage.getItem("lang") || "en";
 langSwitcher.value = savedLang;
 
+function getUiLanguageTag(lang = "en") {
+  return (
+    {
+      en: "en-US",
+      ja: "ja-JP",
+      zh: "zh-CN",
+      de: "de-DE",
+    }[lang] || lang
+  );
+}
+
+function applyUiLanguage(lang) {
+  document.documentElement.lang = getUiLanguageTag(lang);
+}
+
+applyUiLanguage(savedLang);
+
 const langChoices = new Choices(langSwitcher, {
   searchEnabled: false,
   itemSelectText: "",
@@ -512,6 +529,7 @@ i18next
     },
   })
   .then(() => {
+    applyUiLanguage(i18next.language);
     updateMenuLabels();
   });
 
@@ -657,6 +675,7 @@ langSwitcher.addEventListener("change", () => {
   const newLang = langChoices.getValue(true);
 
   i18next.changeLanguage(newLang).then(async () => {
+    applyUiLanguage(newLang);
     updateMenuLabels();
     await renderNotesList();
     await populateRecentMenu();
