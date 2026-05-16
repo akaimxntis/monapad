@@ -29,7 +29,7 @@
     "print": "印刷",
     "settings": "設定",
     "notes": "ノート",
-    "sideBar": "サイドバー",
+    "sidePanel": "サイドパネル",
     "theme": "テーマ",
     "about": "バージョン情報",
     "onyx": "オニキス",
@@ -123,12 +123,12 @@
     "creator": "開発者",
     "disclaimer": "免責事項"
   },
-  "notePanel": {
+  "sidePanel": {
     "search": "検索",
     "notesSection": "ノート",
     "searchSection": "タブとノートを検索",
     "newNote": "新規ノート",
-    "closePanel": "サイドバーを閉じる",
+    "closePanel": "サイドパネルを閉じる",
     "copyText": "全文コピー",
     "duplicate": "複製",
     "convertToUntitled": "無題に変換",

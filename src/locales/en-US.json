@@ -29,7 +29,7 @@
     "print": "Print",
     "settings": "Settings",
     "notes": "Notes",
-    "sideBar": "Side Bar",
+    "sidePanel": "Side Panel",
     "theme": "Themes",
     "about": "About",
     "onyx": "Onyx",
@@ -88,12 +88,12 @@
     "pin": "Pin",
     "unpin": "Unpin"
   },
-  "notePanel": {
+  "sidePanel": {
     "search": "Search",
     "notesSection": "Notes",
     "searchSection": "Search Tabs & Notes",
     "newNote": "New Note",
-    "closePanel": "Close Side Bar",
+    "closePanel": "Close Side Panel",
     "copyText": "Copy Text",
     "duplicate": "Duplicate",
     "convertToUntitled": "Convert to Untitled",

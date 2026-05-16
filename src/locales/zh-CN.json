@@ -29,7 +29,7 @@
     "print": "打印",
     "settings": "设置",
     "notes": "笔记",
-    "sideBar": "侧边栏",
+    "sidePanel": "侧边面板",
     "theme": "主题",
     "about": "关于",
     "onyx": "玛瑙黑",
@@ -123,12 +123,12 @@
     "creator": "创建者",
     "disclaimer": "免责声明"
   },
-  "notePanel": {
+  "sidePanel": {
     "search": "搜索",
     "notesSection": "笔记",
     "searchSection": "搜索标签和笔记",
     "newNote": "新建笔记",
-    "closePanel": "关闭侧边栏",
+    "closePanel": "关闭侧边面板",
     "copyText": "复制全文",
     "duplicate": "复制",
     "convertToUntitled": "转换为未命名",

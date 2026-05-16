@@ -26,25 +26,25 @@ const newTabBtn = document.getElementById("newTabBtn");
 const newNoteBtn = document.getElementById("newNoteBtn");
 const saveAsNoteBtn = document.getElementById("saveAsNoteBtn");
 const settingsButton = document.getElementById("settingsBtn");
-const toggleNotesPanelBtn = document.getElementById("toggleNotesPanelBtn");
+const toggleSidePanelBtn = document.getElementById("toggleSidePanelBtn");
 const settingsMenu = document.getElementById("settings-menu");
-const notesPanel = document.getElementById("notes-panel");
-const notesPanelClose = document.getElementById("notes-panel-close");
-const notesPanelMenuButton = document.getElementById("notes-panel-menu-button");
+const sidePanel = document.getElementById("side-panel");
+const sidePanelClose = document.getElementById("side-panel-close");
+const sidePanelMenuButton = document.getElementById("side-panel-menu-button");
 const notesAddButton = document.getElementById("notes-add");
 const notesListRefreshButton = document.getElementById("notes-list-refresh");
 const notesListHeading = document.getElementById("notes-list-heading");
-const notesSearchHeading = document.getElementById("notes-search-heading");
-const notesSearchInput = document.getElementById("notes-search");
-const notesSearchPlaceholder = document.getElementById("notes-search-placeholder");
-const notesSearchResults = document.getElementById("notes-search-results");
-const notesSearchResultsList = document.getElementById("notes-search-results-list");
-const notesSearchCaseButton = document.getElementById("notes-search-case");
-const notesSearchWordButton = document.getElementById("notes-search-word");
-const notesSearchRegexButton = document.getElementById("notes-search-regex");
-const notesSearchRefreshButton = document.getElementById("notes-search-refresh");
-const notesSearchClearButton = document.getElementById("notes-search-clear");
-const notesSearchCollapseButton = document.getElementById("notes-search-collapse");
+const globalSearchHeading = document.getElementById("global-search-heading");
+const globalSearchInput = document.getElementById("global-search");
+const globalSearchPlaceholder = document.getElementById("global-search-placeholder");
+const globalSearchResults = document.getElementById("global-search-results");
+const globalSearchResultsList = document.getElementById("global-search-results-list");
+const globalSearchCaseButton = document.getElementById("global-search-case");
+const globalSearchWordButton = document.getElementById("global-search-word");
+const globalSearchRegexButton = document.getElementById("global-search-regex");
+const globalSearchRefreshButton = document.getElementById("global-search-refresh");
+const globalSearchClearButton = document.getElementById("global-search-clear");
+const globalSearchCollapseButton = document.getElementById("global-search-collapse");
 const notesList = document.getElementById("notes-list");
 const noteContextMenu = document.getElementById("note-context-menu");
 const customContextMenu = document.getElementById("custom-context-menu");
@@ -197,35 +197,35 @@ let dragCounter = 0;
 let rightClickedTab = null;
 let rightClickedNoteId = null;
 let notesIndexCache = [];
-const NOTE_SEARCH_DEBOUNCE_MS = 120;
-const NOTE_SEARCH_MAX_MATCHES = 10000;
-const NOTE_SEARCH_WORD_SEPARATORS = "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?";
-const NOTE_SEARCH_PREVIEW_MAX = 1000;
-const NOTE_SEARCH_HOVER_MAX = 100;
-const NOTE_SEARCH_BEFORE_MAX_RATIO = 0.7;
-const NOTE_SEARCH_MATCH_MIN_RATIO = 0.3;
-const NOTE_SEARCH_HISTORY_LIMIT = 100;
-let noteSearchTimer = null;
-let noteSearchSeq = 0;
-let noteSearchPreviewFrame = null;
-let noteSearchFilePathFrame = null;
-let noteSearchMeasureContext = null;
-let noteSearchPreviewObserver = null;
-let noteSearchVisiblePreviewRows = new Set();
-let noteSearchHistory = [];
-let noteSearchHistoryIndex = -1;
-let noteSearchHistoryDraft = "";
+const GLOBAL_SEARCH_DEBOUNCE_MS = 120;
+const GLOBAL_SEARCH_MAX_MATCHES = 10000;
+const GLOBAL_SEARCH_WORD_SEPARATORS = "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?";
+const GLOBAL_SEARCH_PREVIEW_MAX = 1000;
+const GLOBAL_SEARCH_HOVER_MAX = 100;
+const GLOBAL_SEARCH_BEFORE_MAX_RATIO = 0.7;
+const GLOBAL_SEARCH_MATCH_MIN_RATIO = 0.3;
+const GLOBAL_SEARCH_HISTORY_LIMIT = 100;
+let globalSearchTimer = null;
+let globalSearchSeq = 0;
+let globalSearchPreviewFrame = null;
+let globalSearchFilePathFrame = null;
+let globalSearchMeasureContext = null;
+let globalSearchPreviewObserver = null;
+let globalSearchVisiblePreviewRows = new Set();
+let globalSearchHistory = [];
+let globalSearchHistoryIndex = -1;
+let globalSearchHistoryDraft = "";
 let openTabSearchIdSeq = 0;
-let noteSearchResultsSignature = "";
-const noteSearchPreviewDisplayCache = new Map();
-let noteSearchState = {
+let globalSearchResultsSignature = "";
+const globalSearchPreviewDisplayCache = new Map();
+let globalSearchState = {
   query: "",
   matchCase: false,
   wholeWord: false,
   regex: false,
   results: [],
   totalMatches: 0,
-  totalNotes: 0,
+  totalItems: 0,
   limitHit: false,
   allCollapsed: false,
   collapsedTargetIds: new Set(),
@@ -533,7 +533,7 @@ function updateMenuLabels() {
   // document.getElementById("print-button").textContent = i18next.t("menu.print");
   document.querySelector("#changeTheme .btn-text").textContent = i18next.t("menu.theme");
   document.querySelector("#settingsBtn .label").textContent = i18next.t("menu.settings");
-  document.querySelector("#toggleNotesPanelBtn .label").textContent = i18next.t("menu.sideBar");
+  document.querySelector("#toggleSidePanelBtn .label").textContent = i18next.t("menu.sidePanel");
   document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
   document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
   document.getElementById("aboutBtn").textContent = i18next.t("menu.about");
@@ -581,37 +581,37 @@ function updateMenuLabels() {
   document.querySelector('button[data-action="keepOpen"] .label').textContent = i18next.t("tabMenu.keepOpen");
   updateTabContextMenuState(tabContextMenu, rightClickedTab);
 
-  // notes panel
-  const notesSearch = document.getElementById("notes-search");
-  if (notesSearch) updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
-  updateNoteSearchLabels();
-  updateNoteSearchResultHeaderLabels();
-  if (notesListHeading) notesListHeading.textContent = i18next.t("notePanel.notesSection");
-  if (notesSearchHeading) {
-    const label = i18next.t("notePanel.searchSection");
-    notesSearchHeading.textContent = label;
-    notesSearchHeading.title = `${label} (Ctrl+Shift+F)`;
+  // side panel
+  const globalSearch = document.getElementById("global-search");
+  if (globalSearch) updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
+  updateGlobalSearchLabels();
+  updateGlobalSearchResultHeaderLabels();
+  if (notesListHeading) notesListHeading.textContent = i18next.t("sidePanel.notesSection");
+  if (globalSearchHeading) {
+    const label = i18next.t("sidePanel.searchSection");
+    globalSearchHeading.textContent = label;
+    globalSearchHeading.title = `${label} (Ctrl+Shift+F)`;
   }
   if (notesAddButton) {
-    const newNoteLabel = i18next.t("notePanel.newNote");
+    const newNoteLabel = i18next.t("sidePanel.newNote");
     notesAddButton.setAttribute("aria-label", newNoteLabel);
     notesAddButton.title = newNoteLabel;
   }
   if (notesListRefreshButton) {
-    const refreshLabel = i18next.t("notePanel.refresh");
+    const refreshLabel = i18next.t("sidePanel.refresh");
     notesListRefreshButton.setAttribute("aria-label", refreshLabel);
     notesListRefreshButton.title = refreshLabel;
   }
-  if (notesPanelClose) notesPanelClose.setAttribute("aria-label", i18next.t("notePanel.closePanel"));
+  if (sidePanelClose) sidePanelClose.setAttribute("aria-label", i18next.t("sidePanel.closePanel"));
   document.querySelector('#note-context-menu button[data-action="copyText"]').textContent =
-    i18next.t("notePanel.copyText");
+    i18next.t("sidePanel.copyText");
   document.querySelector('#note-context-menu button[data-action="duplicate"]').textContent =
-    i18next.t("notePanel.duplicate");
+    i18next.t("sidePanel.duplicate");
   document.querySelector('#note-context-menu button[data-action="convertToUntitled"]').textContent =
-    i18next.t("notePanel.convertToUntitled");
+    i18next.t("sidePanel.convertToUntitled");
   document.querySelector('#note-context-menu button[data-action="convertToFile"]').textContent =
-    i18next.t("notePanel.convertToFile");
-  document.querySelector('#note-context-menu button[data-action="delete"]').textContent = i18next.t("notePanel.delete");
+    i18next.t("sidePanel.convertToFile");
+  document.querySelector('#note-context-menu button[data-action="delete"]').textContent = i18next.t("sidePanel.delete");
 
   // settings
   document.querySelector("#settings-menu .font .h1").textContent = i18next.t("settings.font");
@@ -1846,7 +1846,7 @@ function keepOpenNoteTab(tab = currentTab) {
   setNoteTabPreview(tab, false);
   updateRecentNote(tab.noteId);
   if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
-  scheduleNoteSearchAfterTabSetChange();
+  scheduleGlobalSearchAfterTabSetChange();
   return true;
 }
 
@@ -2254,7 +2254,7 @@ function setTabPinned(tab, pinned, options = {}) {
   if (!options.skipNormalize) normalizePinnedTabs();
   savePinnedTabsState();
   if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
-  if (!options.skipMove) scheduleNoteSearchAfterTabSetChange();
+  if (!options.skipMove) scheduleGlobalSearchAfterTabSetChange();
   return true;
 }
 
@@ -2303,7 +2303,7 @@ async function restorePinnedTabs() {
     let tab = null;
     if (entry?.type === "file" && entry.path) {
       const before = [...tabData];
-      await loadFileByPath(entry.path, getPinnedTabCount());
+      await loadFileByPath(entry.path, getPinnedTabCount(), { skipRecent: true });
       tab =
         tabData.find((candidate) => candidate.path === entry.path && !before.includes(candidate)) ||
         tabData.find((candidate) => candidate.path === entry.path);
@@ -2364,7 +2364,7 @@ monacoEditor.onDidChangeModelContent(() => {
   updateStatusBar();
   updateDeviceShareButtonState();
   scheduleApplyDecorations();
-  if (isNoteSearchActive()) scheduleNoteSearch();
+  if (isGlobalSearchActive()) scheduleGlobalSearch();
 });
 monacoEditor.onDidScrollChange(() => {
   scheduleApplyDecorations();
@@ -2931,12 +2931,12 @@ setTimeout(() => monacoEditor?.focus(), 0);
   await restoreAutosaveDrafts();
 })();
 
-function setNotesPanelOpen(open) {
-  if (document.body.classList.contains("notes-panel-open") === open) return;
-  document.body.classList.toggle("notes-panel-open", open);
-  notesPanel?.setAttribute("aria-hidden", open ? "false" : "true");
+function setSidePanelOpen(open) {
+  if (document.body.classList.contains("side-panel-open") === open) return;
+  document.body.classList.toggle("side-panel-open", open);
+  sidePanel?.setAttribute("aria-hidden", open ? "false" : "true");
   updateEditorLeftMargin();
-  updateNoteSearchActionState();
+  updateGlobalSearchActionState();
   if (open) {
     closeContextMenus({ focus: false });
     renderNotesList();
@@ -2948,29 +2948,29 @@ function setNotesPanelOpen(open) {
   setTimeout(() => monacoEditor?.layout(), 190);
 }
 
-function getNotesPanelWidth() {
-  const value = getComputedStyle(document.documentElement).getPropertyValue("--notes-panel-width");
+function getSidePanelWidth() {
+  const value = getComputedStyle(document.documentElement).getPropertyValue("--side-panel-width");
   const width = parseFloat(value);
   return Number.isFinite(width) ? width : 300;
 }
 
 function updateEditorLeftMargin() {
   const lineNumberOffset = settings.lineNumbers ? 20 : 0;
-  const panelOffset = document.body.classList.contains("notes-panel-open") ? getNotesPanelWidth() : 0;
+  const panelOffset = document.body.classList.contains("side-panel-open") ? getSidePanelWidth() : 0;
   document.documentElement.style.setProperty("--editor-line-number-offset", `${lineNumberOffset}px`);
-  document.documentElement.style.setProperty("--editor-notes-panel-offset", `${panelOffset}px`);
+  document.documentElement.style.setProperty("--editor-side-panel-offset", `${panelOffset}px`);
   editor.style.marginLeft = `${lineNumberOffset + panelOffset}px`;
 }
 
-function toggleNotesPanel() {
-  setNotesPanelOpen(!document.body.classList.contains("notes-panel-open"));
+function toggleSidePanel() {
+  setSidePanelOpen(!document.body.classList.contains("side-panel-open"));
 }
 
-function openNotesSearchPanel() {
-  setNotesPanelOpen(true);
+function openGlobalSearchPanel() {
+  setSidePanelOpen(true);
   requestAnimationFrame(() => {
-    notesSearchInput?.focus();
-    notesSearchInput?.select();
+    globalSearchInput?.focus();
+    globalSearchInput?.select();
   });
 }
 
@@ -2980,7 +2980,7 @@ window.addEventListener(
     if (!((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && e.code === "KeyF")) return;
     e.preventDefault();
     e.stopPropagation();
-    openNotesSearchPanel();
+    openGlobalSearchPanel();
   },
   true,
 );
@@ -2999,16 +2999,16 @@ function toggleMainMenuFromButton(e) {
 
 function setMenuButtonsPointerEvents(value) {
   menuButton.style.pointerEvents = value;
-  notesPanelMenuButton.style.pointerEvents = value;
+  sidePanelMenuButton.style.pointerEvents = value;
 }
 
-toggleNotesPanelBtn.addEventListener("click", (e) => {
+toggleSidePanelBtn.addEventListener("click", (e) => {
   e.preventDefault();
-  setNotesPanelOpen(true);
+  setSidePanelOpen(true);
 });
 
-notesPanelClose.addEventListener("click", () => {
-  setNotesPanelOpen(false);
+sidePanelClose.addEventListener("click", () => {
+  setSidePanelOpen(false);
   monacoEditor?.focus();
 });
 
@@ -3022,7 +3022,7 @@ notesListRefreshButton?.addEventListener("click", async () => {
 
 // menu button
 menuButton.onclick = toggleMainMenuFromButton;
-notesPanelMenuButton.onclick = toggleMainMenuFromButton;
+sidePanelMenuButton.onclick = toggleMainMenuFromButton;
 
 const NOTES_PANEL_DRAG_THRESHOLD = 42;
 let menuButtonDragStart = null;
@@ -3040,7 +3040,7 @@ window.addEventListener("mousemove", (e) => {
   const dy = Math.abs(e.clientY - menuButtonDragStart.y);
   if (dx >= NOTES_PANEL_DRAG_THRESHOLD && dy < 40) {
     menuButtonDragOpenedPanel = true;
-    setNotesPanelOpen(true);
+    setSidePanelOpen(true);
   }
 });
 
@@ -3056,7 +3056,7 @@ window.addEventListener("mouseup", () => {
 // close menu & context menu on outside click
 document.addEventListener("mousedown", (e) => {
   if (e.target.closest(".choices")) return;
-  if (e.target.closest("#menu-button, #notes-panel-menu-button")) {
+  if (e.target.closest("#menu-button, #side-panel-menu-button")) {
     closeContextMenus({ focus: false });
     return;
   }
@@ -3141,8 +3141,8 @@ function updateMenuPositions() {
 window.addEventListener("resize", () => {
   updateMenuPositions();
   updateTabsCompactClass();
-  scheduleNoteSearchPreviewUpdate();
-  scheduleNoteSearchFilePathUpdate();
+  scheduleGlobalSearchPreviewUpdate();
+  scheduleGlobalSearchFilePathUpdate();
 
   // update editor padding
   const editorHeight = editor.clientHeight;
@@ -3821,8 +3821,8 @@ function showDropIndicator(clientX, excludeTab = null, clampAfterPinned = false,
   let { left } = placement;
   left = Math.max(0, Math.min(left, tabsRect.width));
   const indicatorWidth = dropIndicator.offsetWidth || 2;
-  const notesPanelFirstOffset = document.body.classList.contains("notes-panel-open") && left === 0 ? 2 : 0;
-  const centeredLeft = tabsRect.left - containerRect.left + left - indicatorWidth / 2 + notesPanelFirstOffset;
+  const sidePanelFirstOffset = document.body.classList.contains("side-panel-open") && left === 0 ? 2 : 0;
+  const centeredLeft = tabsRect.left - containerRect.left + left - indicatorWidth / 2 + sidePanelFirstOffset;
   dropIndicator.style.left = `${centeredLeft}px`;
   dropIndicator.style.display = "block";
 }
@@ -4139,7 +4139,7 @@ function enableTabDragging(tab, data) {
 
     if (!isOutsideToolbar) {
       normalizePinnedTabs();
-      if (tabOrderChangedDuringDrag) scheduleNoteSearchAfterTabSetChange();
+      if (tabOrderChangedDuringDrag) scheduleGlobalSearchAfterTabSetChange();
       dragStartClientPos = null;
       return;
     }
@@ -4291,7 +4291,7 @@ function removeTabAndAdjustUI(targetTabData) {
   tabs.removeChild(targetTabData.element);
   tabData.splice(index, 1);
   scheduleAllUnsavedTabAutosaves();
-  scheduleNoteSearchAfterTabSetChange();
+  scheduleGlobalSearchAfterTabSetChange();
 
   const isActive = targetTabData.element.classList.contains("active");
 
@@ -4468,7 +4468,7 @@ function createTab(name, content = "", path = null, insertIndex = null) {
   enableTabDragging(tab, data);
 
   updateTabsCompactClass();
-  scheduleNoteSearchAfterTabSetChange();
+  scheduleGlobalSearchAfterTabSetChange();
 
   return data;
 }
@@ -4592,7 +4592,7 @@ async function attemptCloseTab(data) {
       if (data.model) data.model.dispose();
       tabData = tabData.filter((t) => t !== data);
       scheduleAllUnsavedTabAutosaves();
-      scheduleNoteSearchAfterTabSetChange();
+      scheduleGlobalSearchAfterTabSetChange();
       syncRecentlyClosedFilesState();
 
       if (tab.classList.contains("active")) {
@@ -4653,7 +4653,7 @@ async function attemptCloseTab(data) {
         if (data.model) data.model.dispose();
         tabData = tabData.filter((t) => t !== data);
         scheduleAllUnsavedTabAutosaves();
-        scheduleNoteSearchAfterTabSetChange();
+        scheduleGlobalSearchAfterTabSetChange();
         syncRecentlyClosedFilesState();
 
         if (tab.classList.contains("active")) {
@@ -4767,7 +4767,7 @@ async function attemptCloseTab(data) {
     if (data.model) data.model.dispose();
     tabData = tabData.filter((t) => t !== data);
     scheduleAllUnsavedTabAutosaves();
-    scheduleNoteSearchAfterTabSetChange();
+    scheduleGlobalSearchAfterTabSetChange();
     syncRecentlyClosedFilesState();
 
     if (tab.classList.contains("active")) {
@@ -5409,8 +5409,9 @@ async function openFile() {
 }
 
 // file load hadling
-async function loadFileByPath(filePath, insertIndex = null) {
+async function loadFileByPath(filePath, insertIndex = null, options = {}) {
   if (!filePath) return;
+  const shouldUpdateRecent = !options.skipRecent;
 
   const existingTab = tabData.find((tab) => tab.path === filePath);
   if (existingTab) {
@@ -5471,7 +5472,7 @@ async function loadFileByPath(filePath, insertIndex = null) {
         showMessage("autosave-restored");
       }
       switchTab(singleTab);
-      updateRecentFiles(filePath);
+      if (shouldUpdateRecent) updateRecentFiles(filePath);
       syncRecentlyClosedFilesState();
       return;
     }
@@ -5506,7 +5507,7 @@ async function loadFileByPath(filePath, insertIndex = null) {
   reloadButton(newTabData, null, "remove");
 
   switchTab(newTabData);
-  updateRecentFiles(filePath);
+  if (shouldUpdateRecent) updateRecentFiles(filePath);
   syncRecentlyClosedFilesState();
 }
 
@@ -5664,7 +5665,7 @@ async function renderNotesList({ scheduleSearch = true } = {}) {
     pinButton.className = "note-pin-button";
     pinButton.type = "button";
     pinButton.innerHTML = NOTE_PIN_ICON_SVG;
-    const pinLabel = note.pinned ? i18next.t("notePanel.unpinNote") : i18next.t("notePanel.pinNote");
+    const pinLabel = note.pinned ? i18next.t("sidePanel.unpinNote") : i18next.t("sidePanel.pinNote");
     pinButton.setAttribute("aria-label", pinLabel);
     pinButton.title = pinLabel;
     pinButton.addEventListener("click", async (e) => {
@@ -5693,39 +5694,39 @@ async function renderNotesList({ scheduleSearch = true } = {}) {
     notesList.appendChild(item);
   }
 
-  updateNoteSearchActionState();
-  if (scheduleSearch && isNoteSearchActive()) scheduleNoteSearch();
+  updateGlobalSearchActionState();
+  if (scheduleSearch && isGlobalSearchActive()) scheduleGlobalSearch();
 }
 
-notesSearchInput?.addEventListener("input", () => {
-  noteSearchHistoryIndex = -1;
-  noteSearchHistoryDraft = "";
-  updateNoteSearchPlaceholder(true);
-  noteSearchState.dismissedMatches.clear();
-  noteSearchState.allCollapsed = false;
-  noteSearchState.collapsedTargetIds.clear();
-  if (!getNoteSearchQuery()) {
-    clearNoteSearchResults();
+globalSearchInput?.addEventListener("input", () => {
+  globalSearchHistoryIndex = -1;
+  globalSearchHistoryDraft = "";
+  updateGlobalSearchPlaceholder(true);
+  globalSearchState.dismissedMatches.clear();
+  globalSearchState.allCollapsed = false;
+  globalSearchState.collapsedTargetIds.clear();
+  if (!getGlobalSearchQuery()) {
+    clearGlobalSearchResults();
     return;
   }
-  setNoteSearchActive(true);
-  scheduleNoteSearch();
+  setGlobalSearchActive(true);
+  scheduleGlobalSearch();
 });
 
-notesSearchInput?.addEventListener("keydown", (e) => {
+globalSearchInput?.addEventListener("keydown", (e) => {
   if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-    if (showNoteSearchHistoryValue(e.key === "ArrowUp" ? -1 : 1)) e.preventDefault();
+    if (showGlobalSearchHistoryValue(e.key === "ArrowUp" ? -1 : 1)) e.preventDefault();
     return;
   }
 
   if (e.key === "Enter" && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
-    addNoteSearchHistory(getNoteSearchQuery());
+    addGlobalSearchHistory(getGlobalSearchQuery());
     return;
   }
 
-  if (e.key === "Escape" && getNoteSearchQuery()) {
+  if (e.key === "Escape" && getGlobalSearchQuery()) {
     e.preventDefault();
-    clearNoteSearchInput();
+    clearGlobalSearchInput();
     return;
   }
 
@@ -5733,72 +5734,72 @@ notesSearchInput?.addEventListener("keydown", (e) => {
   const key = e.key.toLowerCase();
   if (key === "c") {
     e.preventDefault();
-    toggleNoteSearchOption("matchCase");
+    toggleGlobalSearchOption("matchCase");
   } else if (key === "w") {
     e.preventDefault();
-    toggleNoteSearchOption("wholeWord");
+    toggleGlobalSearchOption("wholeWord");
   } else if (key === "r") {
     e.preventDefault();
-    toggleNoteSearchOption("regex");
+    toggleGlobalSearchOption("regex");
   }
 });
 
-notesSearchInput?.addEventListener("focus", () => {
-  updateNoteSearchPlaceholder(true);
+globalSearchInput?.addEventListener("focus", () => {
+  updateGlobalSearchPlaceholder(true);
 });
 
-notesSearchInput?.addEventListener("blur", () => {
-  addNoteSearchHistory(getNoteSearchQuery());
-  noteSearchHistoryIndex = -1;
-  noteSearchHistoryDraft = "";
-  updateNoteSearchPlaceholder(false);
+globalSearchInput?.addEventListener("blur", () => {
+  addGlobalSearchHistory(getGlobalSearchQuery());
+  globalSearchHistoryIndex = -1;
+  globalSearchHistoryDraft = "";
+  updateGlobalSearchPlaceholder(false);
 });
 
-notesSearchCaseButton?.addEventListener("click", () => {
-  toggleNoteSearchOption("matchCase");
+globalSearchCaseButton?.addEventListener("click", () => {
+  toggleGlobalSearchOption("matchCase");
 });
 
-notesSearchWordButton?.addEventListener("click", () => {
-  toggleNoteSearchOption("wholeWord");
+globalSearchWordButton?.addEventListener("click", () => {
+  toggleGlobalSearchOption("wholeWord");
 });
 
-notesSearchRegexButton?.addEventListener("click", () => {
-  toggleNoteSearchOption("regex");
+globalSearchRegexButton?.addEventListener("click", () => {
+  toggleGlobalSearchOption("regex");
 });
 
-notesSearchRefreshButton?.addEventListener("click", async () => {
-  await refreshNoteSearchNow();
-  notesSearchInput?.focus();
+globalSearchRefreshButton?.addEventListener("click", async () => {
+  await refreshGlobalSearchNow();
+  globalSearchInput?.focus();
 });
 
-notesSearchClearButton?.addEventListener("click", () => {
-  clearNoteSearchInput();
-  notesSearchInput?.focus();
+globalSearchClearButton?.addEventListener("click", () => {
+  clearGlobalSearchInput();
+  globalSearchInput?.focus();
 });
 
-notesSearchCollapseButton?.addEventListener("click", () => {
-  toggleNoteSearchCollapseAll();
-  notesSearchInput?.focus();
+globalSearchCollapseButton?.addEventListener("click", () => {
+  toggleGlobalSearchCollapseAll();
+  globalSearchInput?.focus();
 });
 
 document.addEventListener("keydown", (e) => {
-  if (!document.body.classList.contains("notes-panel-open") || document.activeElement === notesSearchInput) return;
+  if (!document.body.classList.contains("side-panel-open") || document.activeElement === globalSearchInput) return;
   const target = e.target instanceof Element ? e.target : document.activeElement;
   if (target?.closest?.(".monaco-editor, .find-widget, .rename-box, .suggest-widget, .quick-input-widget")) return;
   if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
   const key = e.key.toLowerCase();
   if (key === "c") {
     e.preventDefault();
-    toggleNoteSearchOption("matchCase", false);
+    toggleGlobalSearchOption("matchCase", false);
   } else if (key === "w") {
     e.preventDefault();
-    toggleNoteSearchOption("wholeWord", false);
+    toggleGlobalSearchOption("wholeWord", false);
   } else if (key === "r") {
     e.preventDefault();
-    toggleNoteSearchOption("regex", false);
+    toggleGlobalSearchOption("regex", false);
   }
 });
-updateNoteSearchToggleState();
+updateGlobalSearchToggleState();
 
 function showNoteContextMenu(e, noteId) {
   e.preventDefault();
@@ -5829,171 +5830,171 @@ async function getLiveNoteContent(noteId) {
   return note?.exists ? note.content || "" : null;
 }
 
-function getNoteSearchQuery() {
-  return notesSearchInput?.value || "";
+function getGlobalSearchQuery() {
+  return globalSearchInput?.value || "";
 }
 
-function isNoteSearchActive() {
-  return Boolean(getNoteSearchQuery());
+function isGlobalSearchActive() {
+  return Boolean(getGlobalSearchQuery());
 }
 
-function setNoteSearchActive(active) {
-  document.body.classList.toggle("notes-search-active", Boolean(active));
-  updateNoteSearchActionState();
+function setGlobalSearchActive(active) {
+  document.body.classList.toggle("global-search-active", Boolean(active));
+  updateGlobalSearchActionState();
 }
 
-function getNoteSearchLabel(key, fallback) {
-  return i18next.isInitialized ? i18next.t(`notePanel.${key}`) : fallback;
+function getGlobalSearchLabel(key, fallback) {
+  return i18next.isInitialized ? i18next.t(`sidePanel.${key}`) : fallback;
 }
 
-function getNoteSearchBasePlaceholder() {
-  return getNoteSearchLabel("search", "Search");
+function getGlobalSearchBasePlaceholder() {
+  return getGlobalSearchLabel("search", "Search");
 }
 
-function updateNoteSearchPlaceholder(focused = document.activeElement === notesSearchInput) {
-  if (!notesSearchInput || !notesSearchPlaceholder) return;
-  const base = getNoteSearchBasePlaceholder();
-  notesSearchInput.placeholder = "";
-  notesSearchPlaceholder.classList.toggle("hidden", Boolean(notesSearchInput.value));
-  notesSearchPlaceholder.textContent = "";
+function updateGlobalSearchPlaceholder(focused = document.activeElement === globalSearchInput) {
+  if (!globalSearchInput || !globalSearchPlaceholder) return;
+  const base = getGlobalSearchBasePlaceholder();
+  globalSearchInput.placeholder = "";
+  globalSearchPlaceholder.classList.toggle("hidden", Boolean(globalSearchInput.value));
+  globalSearchPlaceholder.textContent = "";
 
-  if (!focused || !noteSearchHistory.length) {
-    notesSearchPlaceholder.textContent = base;
+  if (!focused || !globalSearchHistory.length) {
+    globalSearchPlaceholder.textContent = base;
     return;
   }
 
   const symbol = document.createElement("span");
-  symbol.className = "notes-search-history-symbol";
+  symbol.className = "global-search-history-symbol";
   symbol.textContent = "\u21c5";
 
-  notesSearchPlaceholder.append(
+  globalSearchPlaceholder.append(
     document.createTextNode(`${base} (`),
     symbol,
-    document.createTextNode(` ${getNoteSearchLabel("historyHint", "for history")})`),
+    document.createTextNode(` ${getGlobalSearchLabel("historyHint", "for history")})`),
   );
 }
 
-function addNoteSearchHistory(value) {
+function addGlobalSearchHistory(value) {
   const entry = String(value || "");
   if (!entry) return;
-  noteSearchHistory = noteSearchHistory.filter((item) => item !== entry);
-  noteSearchHistory.push(entry);
-  if (noteSearchHistory.length > NOTE_SEARCH_HISTORY_LIMIT) {
-    noteSearchHistory = noteSearchHistory.slice(-NOTE_SEARCH_HISTORY_LIMIT);
+  globalSearchHistory = globalSearchHistory.filter((item) => item !== entry);
+  globalSearchHistory.push(entry);
+  if (globalSearchHistory.length > GLOBAL_SEARCH_HISTORY_LIMIT) {
+    globalSearchHistory = globalSearchHistory.slice(-GLOBAL_SEARCH_HISTORY_LIMIT);
   }
-  noteSearchHistoryIndex = -1;
-  updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
+  globalSearchHistoryIndex = -1;
+  updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
 }
 
-function setNoteSearchInputValue(value) {
-  if (!notesSearchInput) return;
-  notesSearchInput.value = value;
-  notesSearchInput.setSelectionRange(value.length, value.length);
-  updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
-  noteSearchState.dismissedMatches.clear();
-  noteSearchState.allCollapsed = false;
-  noteSearchState.collapsedTargetIds.clear();
+function setGlobalSearchInputValue(value) {
+  if (!globalSearchInput) return;
+  globalSearchInput.value = value;
+  globalSearchInput.setSelectionRange(value.length, value.length);
+  updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
+  globalSearchState.dismissedMatches.clear();
+  globalSearchState.allCollapsed = false;
+  globalSearchState.collapsedTargetIds.clear();
   if (!value) {
-    clearNoteSearchResults();
+    clearGlobalSearchResults();
     return;
   }
-  setNoteSearchActive(true);
-  scheduleNoteSearch();
+  setGlobalSearchActive(true);
+  scheduleGlobalSearch();
 }
 
-function showNoteSearchHistoryValue(direction) {
-  if (!notesSearchInput || !noteSearchHistory.length) return false;
+function showGlobalSearchHistoryValue(direction) {
+  if (!globalSearchInput || !globalSearchHistory.length) return false;
 
   if (direction < 0) {
-    if (noteSearchHistoryIndex === -1) {
-      noteSearchHistoryDraft = notesSearchInput.value;
-      noteSearchHistoryIndex = noteSearchHistory.length - 1;
+    if (globalSearchHistoryIndex === -1) {
+      globalSearchHistoryDraft = globalSearchInput.value;
+      globalSearchHistoryIndex = globalSearchHistory.length - 1;
     } else {
-      noteSearchHistoryIndex = Math.max(0, noteSearchHistoryIndex - 1);
+      globalSearchHistoryIndex = Math.max(0, globalSearchHistoryIndex - 1);
     }
-    setNoteSearchInputValue(noteSearchHistory[noteSearchHistoryIndex] || "");
+    setGlobalSearchInputValue(globalSearchHistory[globalSearchHistoryIndex] || "");
     return true;
   }
 
-  if (noteSearchHistoryIndex === -1) return false;
-  if (noteSearchHistoryIndex >= noteSearchHistory.length - 1) {
-    noteSearchHistoryIndex = -1;
-    setNoteSearchInputValue(noteSearchHistoryDraft);
-    noteSearchHistoryDraft = "";
+  if (globalSearchHistoryIndex === -1) return false;
+  if (globalSearchHistoryIndex >= globalSearchHistory.length - 1) {
+    globalSearchHistoryIndex = -1;
+    setGlobalSearchInputValue(globalSearchHistoryDraft);
+    globalSearchHistoryDraft = "";
     return true;
   }
 
-  noteSearchHistoryIndex++;
-  setNoteSearchInputValue(noteSearchHistory[noteSearchHistoryIndex] || "");
+  globalSearchHistoryIndex++;
+  setGlobalSearchInputValue(globalSearchHistory[globalSearchHistoryIndex] || "");
   return true;
 }
 
-function setNoteSearchButtonLabel(button, labelKey, fallback, shortcut) {
+function setGlobalSearchButtonLabel(button, labelKey, fallback, shortcut) {
   if (!button) return;
-  const label = `${getNoteSearchLabel(labelKey, fallback)} (${shortcut})`;
+  const label = `${getGlobalSearchLabel(labelKey, fallback)} (${shortcut})`;
   button.title = label;
   button.setAttribute("aria-label", label);
 }
 
-function setNoteSearchActionLabel(button, labelKey, fallback) {
+function setGlobalSearchActionLabel(button, labelKey, fallback) {
   if (!button) return;
-  const label = getNoteSearchLabel(labelKey, fallback);
+  const label = getGlobalSearchLabel(labelKey, fallback);
   button.title = label;
   button.setAttribute("aria-label", label);
 }
 
-function updateNoteSearchLabels() {
-  setNoteSearchButtonLabel(notesSearchCaseButton, "matchCase", "Match Case", "Alt+C");
-  setNoteSearchButtonLabel(notesSearchWordButton, "matchWholeWord", "Match Whole Word", "Alt+W");
-  setNoteSearchButtonLabel(notesSearchRegexButton, "useRegex", "Use Regular Expression", "Alt+R");
-  setNoteSearchActionLabel(notesSearchRefreshButton, "refresh", "Refresh");
-  setNoteSearchActionLabel(notesSearchClearButton, "clearSearchResults", "Clear Search Results");
-  setNoteSearchActionLabel(
-    notesSearchCollapseButton,
-    noteSearchState.allCollapsed ? "expandAll" : "collapseAll",
-    noteSearchState.allCollapsed ? "Expand All" : "Collapse All",
+function updateGlobalSearchLabels() {
+  setGlobalSearchButtonLabel(globalSearchCaseButton, "matchCase", "Match Case", "Alt+C");
+  setGlobalSearchButtonLabel(globalSearchWordButton, "matchWholeWord", "Match Whole Word", "Alt+W");
+  setGlobalSearchButtonLabel(globalSearchRegexButton, "useRegex", "Use Regular Expression", "Alt+R");
+  setGlobalSearchActionLabel(globalSearchRefreshButton, "refresh", "Refresh");
+  setGlobalSearchActionLabel(globalSearchClearButton, "clearSearchResults", "Clear Search Results");
+  setGlobalSearchActionLabel(
+    globalSearchCollapseButton,
+    globalSearchState.allCollapsed ? "expandAll" : "collapseAll",
+    globalSearchState.allCollapsed ? "Expand All" : "Collapse All",
   );
 }
 
-function hasNoteSearchResults() {
-  return Boolean(isNoteSearchActive() && notesSearchResultsList?.querySelector(".notes-search-file"));
+function hasGlobalSearchResults() {
+  return Boolean(isGlobalSearchActive() && globalSearchResultsList?.querySelector(".global-search-file"));
 }
 
-function updateNoteSearchActionState() {
-  updateNoteSearchLabels();
-  if (notesSearchRefreshButton) notesSearchRefreshButton.disabled = !isNoteSearchActive();
-  if (notesSearchClearButton) notesSearchClearButton.disabled = !isNoteSearchActive() && !noteSearchState.totalMatches;
-  if (notesSearchCollapseButton) {
-    notesSearchCollapseButton.disabled = !hasNoteSearchResults();
-    notesSearchCollapseButton.classList.toggle("codicon-collapse-all", !noteSearchState.allCollapsed);
-    notesSearchCollapseButton.classList.toggle("codicon-expand-all", noteSearchState.allCollapsed);
-    notesSearchCollapseButton.setAttribute("aria-pressed", String(noteSearchState.allCollapsed));
+function updateGlobalSearchActionState() {
+  updateGlobalSearchLabels();
+  if (globalSearchRefreshButton) globalSearchRefreshButton.disabled = !isGlobalSearchActive();
+  if (globalSearchClearButton) globalSearchClearButton.disabled = !isGlobalSearchActive() && !globalSearchState.totalMatches;
+  if (globalSearchCollapseButton) {
+    globalSearchCollapseButton.disabled = !hasGlobalSearchResults();
+    globalSearchCollapseButton.classList.toggle("codicon-collapse-all", !globalSearchState.allCollapsed);
+    globalSearchCollapseButton.classList.toggle("codicon-expand-all", globalSearchState.allCollapsed);
+    globalSearchCollapseButton.setAttribute("aria-pressed", String(globalSearchState.allCollapsed));
   }
 }
 
-function updateNoteSearchToggleState() {
-  updateNoteSearchLabels();
-  notesSearchCaseButton?.classList.toggle("active", noteSearchState.matchCase);
-  notesSearchCaseButton?.setAttribute("aria-pressed", String(noteSearchState.matchCase));
-  notesSearchWordButton?.classList.toggle("active", noteSearchState.wholeWord);
-  notesSearchWordButton?.setAttribute("aria-pressed", String(noteSearchState.wholeWord));
-  notesSearchRegexButton?.classList.toggle("active", noteSearchState.regex);
-  notesSearchRegexButton?.setAttribute("aria-pressed", String(noteSearchState.regex));
-  updateNoteSearchActionState();
+function updateGlobalSearchToggleState() {
+  updateGlobalSearchLabels();
+  globalSearchCaseButton?.classList.toggle("active", globalSearchState.matchCase);
+  globalSearchCaseButton?.setAttribute("aria-pressed", String(globalSearchState.matchCase));
+  globalSearchWordButton?.classList.toggle("active", globalSearchState.wholeWord);
+  globalSearchWordButton?.setAttribute("aria-pressed", String(globalSearchState.wholeWord));
+  globalSearchRegexButton?.classList.toggle("active", globalSearchState.regex);
+  globalSearchRegexButton?.setAttribute("aria-pressed", String(globalSearchState.regex));
+  updateGlobalSearchActionState();
 }
 
-function toggleNoteSearchOption(option, focusInput = true) {
-  noteSearchState[option] = !noteSearchState[option];
-  noteSearchState.dismissedMatches.clear();
-  noteSearchState.allCollapsed = false;
-  noteSearchState.collapsedTargetIds.clear();
-  updateNoteSearchToggleState();
-  if (isNoteSearchActive()) scheduleNoteSearch();
-  if (focusInput) notesSearchInput?.focus();
+function toggleGlobalSearchOption(option, focusInput = true) {
+  globalSearchState[option] = !globalSearchState[option];
+  globalSearchState.dismissedMatches.clear();
+  globalSearchState.allCollapsed = false;
+  globalSearchState.collapsedTargetIds.clear();
+  updateGlobalSearchToggleState();
+  if (isGlobalSearchActive()) scheduleGlobalSearch();
+  if (focusInput) globalSearchInput?.focus();
 }
 
-function validateNoteSearchRegex(query) {
-  if (!noteSearchState.regex || !query) return null;
+function validateGlobalSearchRegex(query) {
+  if (!globalSearchState.regex || !query) return null;
   try {
     new RegExp(query, "u");
     return null;
@@ -6002,23 +6003,23 @@ function validateNoteSearchRegex(query) {
   }
 }
 
-function scheduleNoteSearch() {
-  if (noteSearchTimer) clearTimeout(noteSearchTimer);
-  noteSearchTimer = setTimeout(() => {
-    noteSearchTimer = null;
-    runNoteSearch();
-  }, NOTE_SEARCH_DEBOUNCE_MS);
+function scheduleGlobalSearch() {
+  if (globalSearchTimer) clearTimeout(globalSearchTimer);
+  globalSearchTimer = setTimeout(() => {
+    globalSearchTimer = null;
+    runGlobalSearch();
+  }, GLOBAL_SEARCH_DEBOUNCE_MS);
 }
 
-function scheduleNoteSearchAfterTabSetChange() {
-  if (!isNoteSearchActive()) return;
-  scheduleNoteSearch();
+function scheduleGlobalSearchAfterTabSetChange() {
+  if (!isGlobalSearchActive()) return;
+  scheduleGlobalSearch();
 }
 
-function getNoteSearchResultsSignature(results, totalMatches) {
+function getGlobalSearchResultsSignature(results, totalMatches) {
   return JSON.stringify({
     totalMatches,
-    limitHit: noteSearchState.limitHit,
+    limitHit: globalSearchState.limitHit,
     results: results.map((result) => ({
       targetId: result.targetId,
       type: result.type,
@@ -6041,33 +6042,32 @@ function getNoteSearchResultsSignature(results, totalMatches) {
   });
 }
 
-function updateNoteSearchResultHeaderLabels() {
-  if (!notesSearchResults) return;
-  const summary = notesSearchResults.querySelector(".notes-search-summary");
+function updateGlobalSearchResultHeaderLabels() {
+  if (!globalSearchResults) return;
+  const summary = globalSearchResults.querySelector(".global-search-summary");
   if (summary) {
     summary.textContent = i18next.isInitialized
-      ? i18next.t("notePanel.searchSummary", {
-          count: noteSearchState.totalMatches,
-          notes: noteSearchState.totalNotes,
-          items: noteSearchState.totalNotes,
+      ? i18next.t("sidePanel.searchSummary", {
+          count: globalSearchState.totalMatches,
+          items: globalSearchState.totalItems,
         })
-      : `${noteSearchState.totalMatches} results in ${noteSearchState.totalNotes} items`;
+      : `${globalSearchState.totalMatches} results in ${globalSearchState.totalItems} items`;
   }
 
-  const warning = notesSearchResults.querySelector(".notes-search-warning");
+  const warning = globalSearchResults.querySelector(".global-search-warning");
   if (warning) {
-    const icon = warning.querySelector(".notes-search-warning-icon");
+    const icon = warning.querySelector(".global-search-warning-icon");
     warning.textContent = "";
     if (icon) warning.appendChild(icon);
     else {
       const nextIcon = document.createElement("span");
-      nextIcon.className = "notes-search-warning-icon";
+      nextIcon.className = "global-search-warning-icon";
       nextIcon.setAttribute("aria-hidden", "true");
       warning.appendChild(nextIcon);
     }
     warning.appendChild(
       document.createTextNode(
-        getNoteSearchLabel(
+        getGlobalSearchLabel(
           "searchLimitWarning",
           "The result set only contains a subset of all matches. Be more specific in your search to narrow down the results.",
         ),
@@ -6075,17 +6075,17 @@ function updateNoteSearchResultHeaderLabels() {
     );
   }
 
-  const message = notesSearchResultsList?.querySelector(".notes-search-message");
+  const message = globalSearchResultsList?.querySelector(".global-search-message");
   if (message) {
-    if (!getNoteSearchQuery()) return;
-    if (!noteSearchState.totalMatches) message.textContent = getNoteSearchLabel("noResults", "No results found");
+    if (!getGlobalSearchQuery()) return;
+    if (!globalSearchState.totalMatches) message.textContent = getGlobalSearchLabel("noResults", "No results found");
   }
 }
 
 async function refreshNotesListNow() {
-  if (noteSearchTimer) {
-    clearTimeout(noteSearchTimer);
-    noteSearchTimer = null;
+  if (globalSearchTimer) {
+    clearTimeout(globalSearchTimer);
+    globalSearchTimer = null;
   }
   const dirtyNoteTabs = tabData.filter((tab) => {
     if (!tab?.isNote || !tab.noteId) return false;
@@ -6100,163 +6100,163 @@ async function refreshNotesListNow() {
   }
   noteContentCache.clear();
   await renderNotesList({ scheduleSearch: false });
-  updateNoteSearchActionState();
+  updateGlobalSearchActionState();
 }
 
-async function refreshNoteSearchNow() {
-  if (noteSearchTimer) {
-    clearTimeout(noteSearchTimer);
-    noteSearchTimer = null;
+async function refreshGlobalSearchNow() {
+  if (globalSearchTimer) {
+    clearTimeout(globalSearchTimer);
+    globalSearchTimer = null;
   }
-  noteSearchState.dismissedMatches.clear();
-  noteSearchState.allCollapsed = false;
-  noteSearchState.collapsedTargetIds.clear();
-  if (isNoteSearchActive()) await runNoteSearch();
-  else updateNoteSearchActionState();
+  globalSearchState.dismissedMatches.clear();
+  globalSearchState.allCollapsed = false;
+  globalSearchState.collapsedTargetIds.clear();
+  if (isGlobalSearchActive()) await runGlobalSearch();
+  else updateGlobalSearchActionState();
 }
 
-function syncNoteSearchCollapseStateFromDom() {
-  if (!notesSearchResultsList || !hasNoteSearchResults()) {
-    noteSearchState.allCollapsed = false;
+function syncGlobalSearchCollapseStateFromDom() {
+  if (!globalSearchResultsList || !hasGlobalSearchResults()) {
+    globalSearchState.allCollapsed = false;
   } else {
-    const files = Array.from(notesSearchResultsList.querySelectorAll(".notes-search-file"));
-    noteSearchState.allCollapsed = files.length > 0 && files.every((file) => file.classList.contains("collapsed"));
+    const files = Array.from(globalSearchResultsList.querySelectorAll(".global-search-file"));
+    globalSearchState.allCollapsed = files.length > 0 && files.every((file) => file.classList.contains("collapsed"));
   }
-  updateNoteSearchActionState();
+  updateGlobalSearchActionState();
 }
 
-function isNoteSearchFileSticky(fileRow) {
-  if (!notesSearchResultsList || !fileRow) return false;
+function isGlobalSearchFileSticky(fileRow) {
+  if (!globalSearchResultsList || !fileRow) return false;
   const rowTop = fileRow.getBoundingClientRect().top;
-  const listTop = notesSearchResultsList.getBoundingClientRect().top;
+  const listTop = globalSearchResultsList.getBoundingClientRect().top;
   return Math.abs(rowTop - listTop) <= 1;
 }
 
-function getNoteSearchFlowOffsetTop(fileRow) {
-  if (!fileRow || !notesSearchResultsList) return null;
+function getGlobalSearchFlowOffsetTop(fileRow) {
+  if (!fileRow || !globalSearchResultsList) return null;
   let top = 0;
-  for (let node = notesSearchResultsList.firstElementChild; node && node !== fileRow; node = node.nextElementSibling) {
+  for (let node = globalSearchResultsList.firstElementChild; node && node !== fileRow; node = node.nextElementSibling) {
     top += node.offsetHeight;
   }
   return top;
 }
 
-function toggleNoteSearchFileCollapsed(fileRow, targetId) {
+function toggleGlobalSearchFileCollapsed(fileRow, targetId) {
   if (!fileRow || !targetId) return;
   const shouldCollapse = !fileRow.classList.contains("collapsed");
-  const wasSticky = isNoteSearchFileSticky(fileRow);
-  const targetScrollTop = wasSticky ? getNoteSearchFlowOffsetTop(fileRow) : null;
+  const wasSticky = isGlobalSearchFileSticky(fileRow);
+  const targetScrollTop = wasSticky ? getGlobalSearchFlowOffsetTop(fileRow) : null;
   fileRow.classList.toggle("collapsed", shouldCollapse);
-  if (shouldCollapse) noteSearchState.collapsedTargetIds.add(targetId);
-  else noteSearchState.collapsedTargetIds.delete(targetId);
-  syncNoteSearchCollapseStateFromDom();
+  if (shouldCollapse) globalSearchState.collapsedTargetIds.add(targetId);
+  else globalSearchState.collapsedTargetIds.delete(targetId);
+  syncGlobalSearchCollapseStateFromDom();
 
-  if (targetScrollTop !== null && notesSearchResultsList) {
+  if (targetScrollTop !== null && globalSearchResultsList) {
     requestAnimationFrame(() => {
-      notesSearchResultsList.scrollTop = targetScrollTop;
+      globalSearchResultsList.scrollTop = targetScrollTop;
     });
   }
 }
 
-function setNoteSearchCollapseAll(collapsed) {
-  if (!notesSearchResultsList || !hasNoteSearchResults()) return;
-  noteSearchState.allCollapsed = Boolean(collapsed);
-  if (noteSearchState.allCollapsed) {
-    noteSearchState.results.forEach((result) => noteSearchState.collapsedTargetIds.add(result.targetId));
+function setGlobalSearchCollapseAll(collapsed) {
+  if (!globalSearchResultsList || !hasGlobalSearchResults()) return;
+  globalSearchState.allCollapsed = Boolean(collapsed);
+  if (globalSearchState.allCollapsed) {
+    globalSearchState.results.forEach((result) => globalSearchState.collapsedTargetIds.add(result.targetId));
   } else {
-    noteSearchState.collapsedTargetIds.clear();
+    globalSearchState.collapsedTargetIds.clear();
   }
-  notesSearchResultsList.querySelectorAll(".notes-search-file").forEach((fileRow) => {
-    fileRow.classList.toggle("collapsed", noteSearchState.allCollapsed);
+  globalSearchResultsList.querySelectorAll(".global-search-file").forEach((fileRow) => {
+    fileRow.classList.toggle("collapsed", globalSearchState.allCollapsed);
   });
-  updateNoteSearchActionState();
+  updateGlobalSearchActionState();
 }
 
-function toggleNoteSearchCollapseAll() {
-  setNoteSearchCollapseAll(!noteSearchState.allCollapsed);
+function toggleGlobalSearchCollapseAll() {
+  setGlobalSearchCollapseAll(!globalSearchState.allCollapsed);
 }
 
-function clearNoteSearchResults() {
-  noteSearchSeq++;
-  resetNoteSearchPreviewObserver();
-  noteSearchState.results = [];
-  noteSearchState.totalMatches = 0;
-  noteSearchState.totalNotes = 0;
-  noteSearchState.limitHit = false;
-  noteSearchResultsSignature = "";
-  noteSearchState.allCollapsed = false;
-  noteSearchState.collapsedTargetIds.clear();
-  noteSearchState.dismissedMatches.clear();
-  notesSearchInput?.classList.remove("invalid");
-  notesSearchResults?.querySelector(".notes-search-summary")?.remove();
-  notesSearchResults?.querySelector(".notes-search-warning")?.remove();
-  if (notesSearchResultsList) notesSearchResultsList.innerHTML = "";
-  setNoteSearchActive(false);
-  updateNoteSearchActionState();
+function clearGlobalSearchResults() {
+  globalSearchSeq++;
+  resetGlobalSearchPreviewObserver();
+  globalSearchState.results = [];
+  globalSearchState.totalMatches = 0;
+  globalSearchState.totalItems = 0;
+  globalSearchState.limitHit = false;
+  globalSearchResultsSignature = "";
+  globalSearchState.allCollapsed = false;
+  globalSearchState.collapsedTargetIds.clear();
+  globalSearchState.dismissedMatches.clear();
+  globalSearchInput?.classList.remove("invalid");
+  globalSearchResults?.querySelector(".global-search-summary")?.remove();
+  globalSearchResults?.querySelector(".global-search-warning")?.remove();
+  if (globalSearchResultsList) globalSearchResultsList.innerHTML = "";
+  setGlobalSearchActive(false);
+  updateGlobalSearchActionState();
 }
 
-function clearNoteSearchInput() {
-  if (noteSearchTimer) {
-    clearTimeout(noteSearchTimer);
-    noteSearchTimer = null;
+function clearGlobalSearchInput() {
+  if (globalSearchTimer) {
+    clearTimeout(globalSearchTimer);
+    globalSearchTimer = null;
   }
-  if (notesSearchInput) notesSearchInput.value = "";
-  noteSearchHistoryIndex = -1;
-  noteSearchHistoryDraft = "";
-  updateNoteSearchPlaceholder(document.activeElement === notesSearchInput);
-  clearNoteSearchResults();
+  if (globalSearchInput) globalSearchInput.value = "";
+  globalSearchHistoryIndex = -1;
+  globalSearchHistoryDraft = "";
+  updateGlobalSearchPlaceholder(document.activeElement === globalSearchInput);
+  clearGlobalSearchResults();
 }
 
 function normalizeSearchPreviewText(text) {
   return String(text || "").replace(/\s+/g, " ");
 }
 
-function escapeSearchPreview(text, maxLength = NOTE_SEARCH_PREVIEW_MAX) {
+function escapeSearchPreview(text, maxLength = GLOBAL_SEARCH_PREVIEW_MAX) {
   const value = normalizeSearchPreviewText(text);
   if (value.length <= maxLength) return value;
   return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
-function createNoteSearchPreview(model, match) {
+function createGlobalSearchPreview(model, match) {
   const range = match.range;
   const line = model.getLineContent(range.startLineNumber);
   const beforeFull = line.slice(0, range.startColumn - 1);
   const inside = line.slice(range.startColumn - 1, Math.max(range.startColumn - 1, range.endColumn - 1));
   const after = line.slice(range.endColumn - 1);
   return {
-    fullBefore: normalizeSearchPreviewText(beforeFull).slice(-NOTE_SEARCH_PREVIEW_MAX),
-    inside: escapeSearchPreview(inside || match.matches?.[0] || "", NOTE_SEARCH_PREVIEW_MAX),
-    after: escapeSearchPreview(after, NOTE_SEARCH_PREVIEW_MAX),
+    fullBefore: normalizeSearchPreviewText(beforeFull).slice(-GLOBAL_SEARCH_PREVIEW_MAX),
+    inside: escapeSearchPreview(inside || match.matches?.[0] || "", GLOBAL_SEARCH_PREVIEW_MAX),
+    after: escapeSearchPreview(after, GLOBAL_SEARCH_PREVIEW_MAX),
     fullLine: line,
   };
 }
 
-function getNoteSearchMeasureContext() {
-  if (!noteSearchMeasureContext) {
+function getGlobalSearchMeasureContext() {
+  if (!globalSearchMeasureContext) {
     const canvas = document.createElement("canvas");
-    noteSearchMeasureContext = canvas.getContext("2d");
+    globalSearchMeasureContext = canvas.getContext("2d");
   }
-  return noteSearchMeasureContext;
+  return globalSearchMeasureContext;
 }
 
-function getNoteSearchPreviewFont(previewElement) {
+function getGlobalSearchPreviewFont(previewElement) {
   const style = window.getComputedStyle(previewElement);
   return `${style.fontStyle} ${style.fontVariant} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
 }
 
-function measureNoteSearchText(text, font) {
-  const context = getNoteSearchMeasureContext();
+function measureGlobalSearchText(text, font) {
+  const context = getGlobalSearchMeasureContext();
   if (!context) return String(text || "").length * 8;
   context.font = font;
   return context.measureText(String(text || "")).width;
 }
 
-function fitNoteSearchTextEnd(text, maxWidth, font, prefix = "") {
+function fitGlobalSearchTextEnd(text, maxWidth, font, prefix = "") {
   const value = String(text || "");
   if (!value) return "";
-  if (measureNoteSearchText(value, font) <= maxWidth) return value;
+  if (measureGlobalSearchText(value, font) <= maxWidth) return value;
 
-  const prefixWidth = measureNoteSearchText(prefix, font);
+  const prefixWidth = measureGlobalSearchText(prefix, font);
   const targetWidth = Math.max(0, maxWidth - prefixWidth);
   let low = 0;
   let high = value.length;
@@ -6264,19 +6264,19 @@ function fitNoteSearchTextEnd(text, maxWidth, font, prefix = "") {
   while (low < high) {
     const mid = Math.ceil((low + high) / 2);
     const suffix = value.slice(value.length - mid);
-    if (measureNoteSearchText(suffix, font) <= targetWidth) low = mid;
+    if (measureGlobalSearchText(suffix, font) <= targetWidth) low = mid;
     else high = mid - 1;
   }
 
   return `${prefix}${value.slice(value.length - low)}`;
 }
 
-function fitNoteSearchTextStart(text, maxWidth, font, suffix = "") {
+function fitGlobalSearchTextStart(text, maxWidth, font, suffix = "") {
   const value = String(text || "");
   if (!value) return "";
-  if (measureNoteSearchText(value, font) <= maxWidth) return value;
+  if (measureGlobalSearchText(value, font) <= maxWidth) return value;
 
-  const suffixWidth = measureNoteSearchText(suffix, font);
+  const suffixWidth = measureGlobalSearchText(suffix, font);
   const targetWidth = Math.max(0, maxWidth - suffixWidth);
   let low = 0;
   let high = value.length;
@@ -6284,18 +6284,18 @@ function fitNoteSearchTextStart(text, maxWidth, font, suffix = "") {
   while (low < high) {
     const mid = Math.ceil((low + high) / 2);
     const prefix = value.slice(0, mid);
-    if (measureNoteSearchText(prefix, font) <= targetWidth) low = mid;
+    if (measureGlobalSearchText(prefix, font) <= targetWidth) low = mid;
     else high = mid - 1;
   }
 
   return `${value.slice(0, low)}${suffix}`;
 }
 
-function applyNoteSearchPreviewDisplay(row, display) {
+function applyGlobalSearchPreviewDisplay(row, display) {
   if (!row || !display) return;
-  const before = row.querySelector?.(".notes-search-before");
-  const hit = row.querySelector?.(".notes-search-hit");
-  const after = row.querySelector?.(".notes-search-after");
+  const before = row.querySelector?.(".global-search-before");
+  const hit = row.querySelector?.(".global-search-hit");
+  const after = row.querySelector?.(".global-search-after");
   if (!before || !hit || !after) return;
   if (before.textContent !== display.before) before.textContent = display.before;
   if (hit.textContent !== display.hit) hit.textContent = display.hit;
@@ -6303,36 +6303,36 @@ function applyNoteSearchPreviewDisplay(row, display) {
   row.classList.add("preview-ready");
 }
 
-function updateNoteSearchPreviewElement(row) {
-  const preview = row?.querySelector?.(".notes-search-preview");
-  const before = row?.querySelector?.(".notes-search-before");
-  const hit = row?.querySelector?.(".notes-search-hit");
-  const after = row?.querySelector?.(".notes-search-after");
+function updateGlobalSearchPreviewElement(row) {
+  const preview = row?.querySelector?.(".global-search-preview");
+  const before = row?.querySelector?.(".global-search-before");
+  const hit = row?.querySelector?.(".global-search-hit");
+  const after = row?.querySelector?.(".global-search-after");
   const matchId = row?.dataset?.matchId;
   if (!preview || !before || !hit || !after || !matchId) return;
 
   const match =
-    row.noteSearchMatch ||
-    noteSearchState.results.flatMap((result) => result.matches).find((item) => item.id === matchId);
+    row.globalSearchMatch ||
+    globalSearchState.results.flatMap((result) => result.matches).find((item) => item.id === matchId);
   if (!match) return;
 
   const width = preview.clientWidth;
   if (!width) return;
-  const font = getNoteSearchPreviewFont(preview);
+  const font = getGlobalSearchPreviewFont(preview);
   const beforeText = match.preview.fullBefore;
   const hitText = match.preview.inside;
   const afterText = match.preview.after;
-  const beforeWidth = measureNoteSearchText(beforeText, font);
-  const hitWidth = measureNoteSearchText(hitText, font);
+  const beforeWidth = measureGlobalSearchText(beforeText, font);
+  const hitWidth = measureGlobalSearchText(hitText, font);
   const ellipsis = "...";
 
-  const beforeLimit = width * NOTE_SEARCH_BEFORE_MAX_RATIO;
-  const minMatchWidth = Math.min(hitWidth, width * NOTE_SEARCH_MATCH_MIN_RATIO);
+  const beforeLimit = width * GLOBAL_SEARCH_BEFORE_MAX_RATIO;
+  const minMatchWidth = Math.min(hitWidth, width * GLOBAL_SEARCH_MATCH_MIN_RATIO);
   const shouldShiftWindow = beforeWidth + minMatchWidth > width;
   const beforeTargetWidth = shouldShiftWindow ? beforeLimit : Math.min(beforeWidth, width);
-  const beforeDisplay = fitNoteSearchTextEnd(beforeText, beforeTargetWidth, font, shouldShiftWindow ? ellipsis : "");
-  const remainingWidth = Math.max(0, width - measureNoteSearchText(beforeDisplay, font));
-  const hitDisplay = fitNoteSearchTextStart(hitText, remainingWidth, font, ellipsis);
+  const beforeDisplay = fitGlobalSearchTextEnd(beforeText, beforeTargetWidth, font, shouldShiftWindow ? ellipsis : "");
+  const remainingWidth = Math.max(0, width - measureGlobalSearchText(beforeDisplay, font));
+  const hitDisplay = fitGlobalSearchTextStart(hitText, remainingWidth, font, ellipsis);
   const hitComplete = hitDisplay === hitText;
   const afterDisplay = hitComplete ? afterText : "";
   const display = {
@@ -6342,33 +6342,33 @@ function updateNoteSearchPreviewElement(row) {
     after: afterDisplay,
   };
 
-  applyNoteSearchPreviewDisplay(row, display);
-  noteSearchPreviewDisplayCache.set(matchId, display);
+  applyGlobalSearchPreviewDisplay(row, display);
+  globalSearchPreviewDisplayCache.set(matchId, display);
 }
 
-function updateNoteSearchPreviewElements() {
-  if (!notesSearchResultsList) return;
-  if (noteSearchVisiblePreviewRows.size) {
-    noteSearchVisiblePreviewRows.forEach((row) => updateNoteSearchPreviewElement(row));
+function updateGlobalSearchPreviewElements() {
+  if (!globalSearchResultsList) return;
+  if (globalSearchVisiblePreviewRows.size) {
+    globalSearchVisiblePreviewRows.forEach((row) => updateGlobalSearchPreviewElement(row));
     return;
   }
-  notesSearchResultsList.querySelectorAll(".notes-search-match").forEach((row) => updateNoteSearchPreviewElement(row));
+  globalSearchResultsList.querySelectorAll(".global-search-match").forEach((row) => updateGlobalSearchPreviewElement(row));
 }
 
-function scheduleNoteSearchPreviewUpdate() {
-  if (noteSearchPreviewFrame !== null) return;
-  noteSearchPreviewFrame = requestAnimationFrame(() => {
-    noteSearchPreviewFrame = null;
-    updateNoteSearchPreviewElements();
+function scheduleGlobalSearchPreviewUpdate() {
+  if (globalSearchPreviewFrame !== null) return;
+  globalSearchPreviewFrame = requestAnimationFrame(() => {
+    globalSearchPreviewFrame = null;
+    updateGlobalSearchPreviewElements();
   });
 }
 
-function updateNoteSearchFilePathVisibility() {
-  if (!notesSearchResultsList) return;
-  notesSearchResultsList.querySelectorAll(".notes-search-file.has-path").forEach((row) => {
-    const label = row.querySelector(".notes-search-file-label");
-    const title = row.querySelector(".notes-search-file-title");
-    const path = row.querySelector(".notes-search-file-path");
+function updateGlobalSearchFilePathVisibility() {
+  if (!globalSearchResultsList) return;
+  globalSearchResultsList.querySelectorAll(".global-search-file.has-path").forEach((row) => {
+    const label = row.querySelector(".global-search-file-label");
+    const title = row.querySelector(".global-search-file-title");
+    const path = row.querySelector(".global-search-file-path");
     if (!label || !title || !path?.textContent) {
       row.classList.remove("show-path");
       return;
@@ -6380,60 +6380,60 @@ function updateNoteSearchFilePathVisibility() {
   });
 }
 
-function scheduleNoteSearchFilePathUpdate() {
-  if (noteSearchFilePathFrame !== null) return;
-  noteSearchFilePathFrame = requestAnimationFrame(() => {
-    noteSearchFilePathFrame = null;
-    updateNoteSearchFilePathVisibility();
+function scheduleGlobalSearchFilePathUpdate() {
+  if (globalSearchFilePathFrame !== null) return;
+  globalSearchFilePathFrame = requestAnimationFrame(() => {
+    globalSearchFilePathFrame = null;
+    updateGlobalSearchFilePathVisibility();
   });
 }
 
-function resetNoteSearchPreviewObserver() {
-  if (noteSearchPreviewFrame !== null) {
-    cancelAnimationFrame(noteSearchPreviewFrame);
-    noteSearchPreviewFrame = null;
+function resetGlobalSearchPreviewObserver() {
+  if (globalSearchPreviewFrame !== null) {
+    cancelAnimationFrame(globalSearchPreviewFrame);
+    globalSearchPreviewFrame = null;
   }
-  if (noteSearchFilePathFrame !== null) {
-    cancelAnimationFrame(noteSearchFilePathFrame);
-    noteSearchFilePathFrame = null;
+  if (globalSearchFilePathFrame !== null) {
+    cancelAnimationFrame(globalSearchFilePathFrame);
+    globalSearchFilePathFrame = null;
   }
-  if (noteSearchPreviewObserver) {
-    noteSearchPreviewObserver.disconnect();
-    noteSearchPreviewObserver = null;
+  if (globalSearchPreviewObserver) {
+    globalSearchPreviewObserver.disconnect();
+    globalSearchPreviewObserver = null;
   }
-  noteSearchVisiblePreviewRows.clear();
+  globalSearchVisiblePreviewRows.clear();
 }
 
-function getNoteSearchPreviewObserver() {
-  if (!("IntersectionObserver" in window) || !notesSearchResultsList) return null;
-  if (!noteSearchPreviewObserver) {
-    noteSearchPreviewObserver = new IntersectionObserver(
+function getGlobalSearchPreviewObserver() {
+  if (!("IntersectionObserver" in window) || !globalSearchResultsList) return null;
+  if (!globalSearchPreviewObserver) {
+    globalSearchPreviewObserver = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const row = entry.target;
           if (!entry.isIntersecting) {
-            noteSearchVisiblePreviewRows.delete(row);
+            globalSearchVisiblePreviewRows.delete(row);
             continue;
           }
-          noteSearchVisiblePreviewRows.add(row);
-          updateNoteSearchPreviewElement(row);
+          globalSearchVisiblePreviewRows.add(row);
+          updateGlobalSearchPreviewElement(row);
         }
       },
       {
-        root: notesSearchResultsList,
+        root: globalSearchResultsList,
         rootMargin: "220px 0px",
         threshold: 0,
       },
     );
   }
-  return noteSearchPreviewObserver;
+  return globalSearchPreviewObserver;
 }
 
-function observeNoteSearchPreviewRow(row) {
-  const observer = getNoteSearchPreviewObserver();
+function observeGlobalSearchPreviewRow(row) {
+  const observer = getGlobalSearchPreviewObserver();
   if (!observer) {
-    noteSearchVisiblePreviewRows.add(row);
-    updateNoteSearchPreviewElement(row);
+    globalSearchVisiblePreviewRows.add(row);
+    updateGlobalSearchPreviewElement(row);
     return;
   }
   observer.observe(row);
@@ -6451,7 +6451,7 @@ function getSearchResultPathDisplay(fullPath) {
   return index > 0 ? value.slice(0, index) : value;
 }
 
-function getNoteSearchMatchId(targetId, range, query) {
+function getGlobalSearchMatchId(targetId, range, query) {
   return `${targetId}:${range.startLineNumber}:${range.startColumn}:${range.endLineNumber}:${range.endColumn}:${query}`;
 }
 
@@ -6470,7 +6470,7 @@ function createOpenTabSearchTarget(tab, order) {
   };
 }
 
-function createNoteSearchTarget(note, order) {
+function createGlobalSearchTarget(note, order) {
   return {
     type: "note",
     targetId: `note:${note.id}`,
@@ -6496,7 +6496,7 @@ function createSearchTargets(notes) {
 
   notes.forEach((note, index) => {
     if (!note?.id || openNoteIds.has(note.id)) return;
-    targets.push(createNoteSearchTarget(note, tabData.length + index));
+    targets.push(createGlobalSearchTarget(note, tabData.length + index));
   });
 
   return targets;
@@ -6513,7 +6513,7 @@ async function getSearchableTargetContent(target) {
   return getSearchableNoteContent(target.note);
 }
 
-function searchTargetContent(target, content, query, maxMatches = NOTE_SEARCH_MAX_MATCHES) {
+function searchTargetContent(target, content, query, maxMatches = GLOBAL_SEARCH_MAX_MATCHES) {
   const existingModel = target.type === "tab" || target.tab ? target.tab?.model : null;
   const model = existingModel || monaco.editor.createModel(content || "", "monapad");
   try {
@@ -6521,9 +6521,9 @@ function searchTargetContent(target, content, query, maxMatches = NOTE_SEARCH_MA
     const matches = model.findMatches(
       query,
       model.getFullModelRange(),
-      noteSearchState.regex,
-      noteSearchState.matchCase,
-      noteSearchState.wholeWord ? NOTE_SEARCH_WORD_SEPARATORS : null,
+      globalSearchState.regex,
+      globalSearchState.matchCase,
+      globalSearchState.wholeWord ? GLOBAL_SEARCH_WORD_SEPARATORS : null,
       false,
       askMax,
     );
@@ -6536,14 +6536,14 @@ function searchTargetContent(target, content, query, maxMatches = NOTE_SEARCH_MA
       matches: visibleMatches.map((match) => {
         const range = match.range;
         return {
-          id: getNoteSearchMatchId(target.targetId, range, query),
+          id: getGlobalSearchMatchId(target.targetId, range, query),
           targetId: target.targetId,
           type: target.type,
           noteId: target.noteId,
           tabId: target.tabId,
           lineNumber: range.startLineNumber,
           range,
-          preview: createNoteSearchPreview(model, match),
+          preview: createGlobalSearchPreview(model, match),
         };
       }),
     };
@@ -6571,27 +6571,27 @@ async function getSearchableNoteContent(note) {
   return content;
 }
 
-async function runNoteSearch() {
-  const query = getNoteSearchQuery();
-  noteSearchState.query = query;
-  updateNoteSearchToggleState();
+async function runGlobalSearch() {
+  const query = getGlobalSearchQuery();
+  globalSearchState.query = query;
+  updateGlobalSearchToggleState();
 
   if (!query) {
-    clearNoteSearchResults();
+    clearGlobalSearchResults();
     return;
   }
 
-  setNoteSearchActive(true);
-  const seq = ++noteSearchSeq;
-  const regexError = validateNoteSearchRegex(query);
-  notesSearchInput?.classList.toggle("invalid", Boolean(regexError));
+  setGlobalSearchActive(true);
+  const seq = ++globalSearchSeq;
+  const regexError = validateGlobalSearchRegex(query);
+  globalSearchInput?.classList.toggle("invalid", Boolean(regexError));
   if (regexError) {
-    renderNoteSearchMessage(regexError);
+    renderGlobalSearchMessage(regexError);
     return;
   }
 
-  if (!noteSearchResultsSignature && !noteSearchState.totalMatches)
-    renderNoteSearchMessage(getNoteSearchLabel("searching", "Searching..."));
+  if (!globalSearchResultsSignature && !globalSearchState.totalMatches)
+    renderGlobalSearchMessage(getGlobalSearchLabel("searching", "Searching..."));
 
   try {
     const notes = sortNotesForPanel(
@@ -6604,17 +6604,17 @@ async function runNoteSearch() {
 
     for (const target of targets) {
       if (target.type === "note" && target.note?.contentBytes === 0) continue;
-      if (totalMatches >= NOTE_SEARCH_MAX_MATCHES) {
+      if (totalMatches >= GLOBAL_SEARCH_MAX_MATCHES) {
         limitHit = true;
         break;
       }
 
       const content = await getSearchableTargetContent(target);
-      if (seq !== noteSearchSeq || content === null) return;
+      if (seq !== globalSearchSeq || content === null) return;
 
-      const remaining = NOTE_SEARCH_MAX_MATCHES - totalMatches;
+      const remaining = GLOBAL_SEARCH_MAX_MATCHES - totalMatches;
       const searchResult = searchTargetContent(target, content, query, remaining);
-      let matches = searchResult.matches.filter((match) => !noteSearchState.dismissedMatches.has(match.id));
+      let matches = searchResult.matches.filter((match) => !globalSearchState.dismissedMatches.has(match.id));
       if (searchResult.limitHit || matches.length > remaining) {
         limitHit = true;
         matches = matches.slice(0, remaining);
@@ -6638,167 +6638,166 @@ async function runNoteSearch() {
         matches,
       });
 
-      if (limitHit || totalMatches >= NOTE_SEARCH_MAX_MATCHES) {
+      if (limitHit || totalMatches >= GLOBAL_SEARCH_MAX_MATCHES) {
         limitHit = true;
         break;
       }
     }
 
-    if (seq !== noteSearchSeq) return;
+    if (seq !== globalSearchSeq) return;
     results.sort((a, b) => a.order - b.order);
 
-    noteSearchState.limitHit = limitHit;
-    const nextSignature = getNoteSearchResultsSignature(results, totalMatches);
-    if (nextSignature === noteSearchResultsSignature) {
-      updateNoteSearchActionState();
+    globalSearchState.limitHit = limitHit;
+    const nextSignature = getGlobalSearchResultsSignature(results, totalMatches);
+    if (nextSignature === globalSearchResultsSignature) {
+      updateGlobalSearchActionState();
       return;
     }
 
-    noteSearchState.results = results;
+    globalSearchState.results = results;
     const resultTargetIds = new Set(results.map((result) => result.targetId));
-    noteSearchState.collapsedTargetIds = new Set(
-      [...noteSearchState.collapsedTargetIds].filter((targetId) => resultTargetIds.has(targetId)),
+    globalSearchState.collapsedTargetIds = new Set(
+      [...globalSearchState.collapsedTargetIds].filter((targetId) => resultTargetIds.has(targetId)),
     );
-    noteSearchState.totalMatches = totalMatches;
-    noteSearchState.totalNotes = results.length;
-    noteSearchState.limitHit = limitHit;
-    noteSearchResultsSignature = nextSignature;
-    renderNoteSearchResults();
+    globalSearchState.totalMatches = totalMatches;
+    globalSearchState.totalItems = results.length;
+    globalSearchState.limitHit = limitHit;
+    globalSearchResultsSignature = nextSignature;
+    renderGlobalSearchResults();
   } catch (error) {
-    if (seq !== noteSearchSeq) return;
-    renderNoteSearchMessage(error?.message || getNoteSearchLabel("searchFailed", "Search failed"));
+    if (seq !== globalSearchSeq) return;
+    renderGlobalSearchMessage(error?.message || getGlobalSearchLabel("searchFailed", "Search failed"));
   }
 }
 
-function renderNoteSearchMessage(message) {
-  if (!notesSearchResults || !notesSearchResultsList) return;
-  resetNoteSearchPreviewObserver();
-  notesSearchResults.querySelector(".notes-search-summary")?.remove();
-  notesSearchResults.querySelector(".notes-search-warning")?.remove();
-  notesSearchResultsList.innerHTML = "";
+function renderGlobalSearchMessage(message) {
+  if (!globalSearchResults || !globalSearchResultsList) return;
+  resetGlobalSearchPreviewObserver();
+  globalSearchResults.querySelector(".global-search-summary")?.remove();
+  globalSearchResults.querySelector(".global-search-warning")?.remove();
+  globalSearchResultsList.innerHTML = "";
   const item = document.createElement("div");
-  item.className = "notes-search-message";
+  item.className = "global-search-message";
   item.textContent = message;
-  notesSearchResultsList.appendChild(item);
-  updateNoteSearchActionState();
+  globalSearchResultsList.appendChild(item);
+  updateGlobalSearchActionState();
 }
 
-function renderNoteSearchResults() {
-  if (!notesSearchResults || !notesSearchResultsList) return;
-  resetNoteSearchPreviewObserver();
-  notesSearchResults.querySelector(".notes-search-summary")?.remove();
-  notesSearchResults.querySelector(".notes-search-warning")?.remove();
-  notesSearchResultsList.innerHTML = "";
+function renderGlobalSearchResults() {
+  if (!globalSearchResults || !globalSearchResultsList) return;
+  resetGlobalSearchPreviewObserver();
+  globalSearchResults.querySelector(".global-search-summary")?.remove();
+  globalSearchResults.querySelector(".global-search-warning")?.remove();
+  globalSearchResultsList.innerHTML = "";
 
-  if (!noteSearchState.totalMatches) {
-    renderNoteSearchMessage(getNoteSearchLabel("noResults", "No results found"));
+  if (!globalSearchState.totalMatches) {
+    renderGlobalSearchMessage(getGlobalSearchLabel("noResults", "No results found"));
     return;
   }
 
   const summary = document.createElement("div");
-  summary.className = "notes-search-summary";
+  summary.className = "global-search-summary";
   summary.textContent = i18next.isInitialized
-    ? i18next.t("notePanel.searchSummary", {
-        count: noteSearchState.totalMatches,
-        notes: noteSearchState.totalNotes,
-        items: noteSearchState.totalNotes,
+    ? i18next.t("sidePanel.searchSummary", {
+        count: globalSearchState.totalMatches,
+        items: globalSearchState.totalItems,
       })
-    : `${noteSearchState.totalMatches} results in ${noteSearchState.totalNotes} items`;
-  notesSearchResults.insertBefore(summary, notesSearchResultsList);
+    : `${globalSearchState.totalMatches} results in ${globalSearchState.totalItems} items`;
+  globalSearchResults.insertBefore(summary, globalSearchResultsList);
 
-  if (noteSearchState.limitHit) {
+  if (globalSearchState.limitHit) {
     const warning = document.createElement("div");
-    warning.className = "notes-search-warning";
+    warning.className = "global-search-warning";
     const icon = document.createElement("span");
-    icon.className = "notes-search-warning-icon";
+    icon.className = "global-search-warning-icon";
     icon.setAttribute("aria-hidden", "true");
     warning.append(icon);
-    notesSearchResults.insertBefore(warning, notesSearchResultsList);
+    globalSearchResults.insertBefore(warning, globalSearchResultsList);
   }
-  updateNoteSearchResultHeaderLabels();
+  updateGlobalSearchResultHeaderLabels();
 
-  for (const result of noteSearchState.results) {
+  for (const result of globalSearchState.results) {
     const fileRow = document.createElement("div");
-    const isCollapsed = noteSearchState.allCollapsed || noteSearchState.collapsedTargetIds.has(result.targetId);
-    fileRow.className = `notes-search-file ${result.type}-target${isCollapsed ? " collapsed" : ""}`;
+    const isCollapsed = globalSearchState.allCollapsed || globalSearchState.collapsedTargetIds.has(result.targetId);
+    fileRow.className = `global-search-file ${result.type}-target${isCollapsed ? " collapsed" : ""}`;
     fileRow.classList.toggle("has-path", Boolean(result.path));
     fileRow.dataset.targetId = result.targetId;
     if (result.noteId) fileRow.dataset.noteId = result.noteId;
 
     const twistie = document.createElement("span");
-    twistie.className = "notes-search-twistie codicon codicon-chevron-down";
+    twistie.className = "global-search-twistie codicon codicon-chevron-down";
 
     const label = document.createElement("span");
-    label.className = "notes-search-file-label";
+    label.className = "global-search-file-label";
     label.title = result.fullPath || result.title;
 
     const title = document.createElement("span");
-    title.className = "notes-search-file-title";
+    title.className = "global-search-file-title";
     title.textContent = result.title;
 
     const path = document.createElement("span");
-    path.className = "notes-search-file-path";
+    path.className = "global-search-file-path";
     path.textContent = result.path || "";
     label.append(title, path);
 
     const count = document.createElement("span");
-    count.className = "notes-search-count";
+    count.className = "global-search-count";
     count.textContent = result.matches.length;
 
     const dismiss = document.createElement("button");
-    dismiss.className = "notes-search-file-dismiss codicon codicon-close";
+    dismiss.className = "global-search-file-dismiss codicon codicon-close";
     dismiss.type = "button";
-    dismiss.title = getNoteSearchLabel("dismiss", "Dismiss");
-    dismiss.setAttribute("aria-label", getNoteSearchLabel("dismiss", "Dismiss"));
+    dismiss.title = getGlobalSearchLabel("dismiss", "Dismiss");
+    dismiss.setAttribute("aria-label", getGlobalSearchLabel("dismiss", "Dismiss"));
     dismiss.addEventListener("click", (e) => {
       e.stopPropagation();
-      dismissNoteSearchFile(result.targetId);
+      dismissGlobalSearchFile(result.targetId);
     });
 
     const matchGroup = document.createElement("div");
-    matchGroup.className = "notes-search-match-group";
+    matchGroup.className = "global-search-match-group";
     const rowsToObserve = [];
 
     fileRow.append(twistie, label, count, dismiss);
     fileRow.addEventListener("click", () => {
-      toggleNoteSearchFileCollapsed(fileRow, result.targetId);
+      toggleGlobalSearchFileCollapsed(fileRow, result.targetId);
     });
 
     for (const match of result.matches) {
-      const matchRow = createNoteSearchMatchElement(match);
+      const matchRow = createGlobalSearchMatchElement(match);
       matchGroup.appendChild(matchRow);
       rowsToObserve.push(matchRow);
     }
 
-    notesSearchResultsList.append(fileRow, matchGroup);
-    rowsToObserve.forEach((row) => observeNoteSearchPreviewRow(row));
+    globalSearchResultsList.append(fileRow, matchGroup);
+    rowsToObserve.forEach((row) => observeGlobalSearchPreviewRow(row));
   }
-  scheduleNoteSearchFilePathUpdate();
-  updateNoteSearchActionState();
+  scheduleGlobalSearchFilePathUpdate();
+  updateGlobalSearchActionState();
 }
 
-function createNoteSearchMatchElement(match) {
+function createGlobalSearchMatchElement(match) {
   const row = document.createElement("div");
-  row.className = "notes-search-match";
+  row.className = "global-search-match";
   row.dataset.targetId = match.targetId;
   if (match.noteId) row.dataset.noteId = match.noteId;
   row.dataset.matchId = match.id;
-  row.noteSearchMatch = match;
-  row.title = `${match.lineNumber}: ${escapeSearchPreview(match.preview.fullLine, NOTE_SEARCH_HOVER_MAX)}`;
-  const cachedPreview = noteSearchPreviewDisplayCache.get(match.id);
+  row.globalSearchMatch = match;
+  row.title = `${match.lineNumber}: ${escapeSearchPreview(match.preview.fullLine, GLOBAL_SEARCH_HOVER_MAX)}`;
+  const cachedPreview = globalSearchPreviewDisplayCache.get(match.id);
   if (cachedPreview) row.classList.add("preview-ready");
 
   const preview = document.createElement("span");
-  preview.className = "notes-search-preview";
+  preview.className = "global-search-preview";
 
   const before = document.createElement("span");
-  before.className = "notes-search-before";
+  before.className = "global-search-before";
   before.textContent = match.preview.fullBefore;
   const hit = document.createElement("span");
-  hit.className = "notes-search-hit";
+  hit.className = "global-search-hit";
   hit.textContent = match.preview.inside;
   const after = document.createElement("span");
-  after.className = "notes-search-after";
+  after.className = "global-search-after";
   after.textContent = cachedPreview?.after ?? match.preview.after;
   if (cachedPreview) {
     before.textContent = cachedPreview.before;
@@ -6807,57 +6806,57 @@ function createNoteSearchMatchElement(match) {
   preview.append(before, hit, after);
 
   const dismiss = document.createElement("button");
-  dismiss.className = "notes-search-dismiss codicon codicon-close";
+  dismiss.className = "global-search-dismiss codicon codicon-close";
   dismiss.type = "button";
-  dismiss.title = getNoteSearchLabel("dismiss", "Dismiss");
-  dismiss.setAttribute("aria-label", getNoteSearchLabel("dismiss", "Dismiss"));
+  dismiss.title = getGlobalSearchLabel("dismiss", "Dismiss");
+  dismiss.setAttribute("aria-label", getGlobalSearchLabel("dismiss", "Dismiss"));
   dismiss.addEventListener("click", (e) => {
     e.stopPropagation();
-    dismissNoteSearchMatch(match.id);
+    dismissGlobalSearchMatch(match.id);
   });
 
   row.append(preview, dismiss);
   row.addEventListener("click", async () => {
-    if (suppressNoteSearchMatchClick) return;
-    await openNoteSearchMatch(match, { preview: true });
+    if (suppressGlobalSearchMatchClick) return;
+    await openGlobalSearchMatch(match, { preview: true });
   });
   row.addEventListener("dblclick", async () => {
-    if (suppressNoteSearchMatchClick) return;
-    await openNoteSearchMatch(match, { preview: false });
+    if (suppressGlobalSearchMatchClick) return;
+    await openGlobalSearchMatch(match, { preview: false });
   });
   row.addEventListener("auxclick", async (e) => {
-    if (e.button !== 1 || suppressNoteSearchMatchClick) return;
+    if (e.button !== 1 || suppressGlobalSearchMatchClick) return;
     e.preventDefault();
-    await openNoteSearchMatch(match, { preview: false });
+    await openGlobalSearchMatch(match, { preview: false });
   });
-  row.addEventListener("mousedown", (e) => beginNoteSearchMatchDrag(e, row, match));
+  row.addEventListener("mousedown", (e) => beginGlobalSearchMatchDrag(e, row, match));
   return row;
 }
 
-function dismissNoteSearchMatch(matchId) {
-  noteSearchState.dismissedMatches.add(matchId);
-  for (const result of noteSearchState.results) {
+function dismissGlobalSearchMatch(matchId) {
+  globalSearchState.dismissedMatches.add(matchId);
+  for (const result of globalSearchState.results) {
     result.matches = result.matches.filter((match) => match.id !== matchId);
   }
-  noteSearchState.results = noteSearchState.results.filter((result) => result.matches.length);
-  noteSearchState.totalMatches = noteSearchState.results.reduce((total, result) => total + result.matches.length, 0);
-  noteSearchState.totalNotes = noteSearchState.results.length;
-  noteSearchResultsSignature = getNoteSearchResultsSignature(noteSearchState.results, noteSearchState.totalMatches);
-  renderNoteSearchResults();
+  globalSearchState.results = globalSearchState.results.filter((result) => result.matches.length);
+  globalSearchState.totalMatches = globalSearchState.results.reduce((total, result) => total + result.matches.length, 0);
+  globalSearchState.totalItems = globalSearchState.results.length;
+  globalSearchResultsSignature = getGlobalSearchResultsSignature(globalSearchState.results, globalSearchState.totalMatches);
+  renderGlobalSearchResults();
 }
 
-function dismissNoteSearchFile(targetId) {
-  const result = noteSearchState.results.find((item) => item.targetId === targetId);
+function dismissGlobalSearchFile(targetId) {
+  const result = globalSearchState.results.find((item) => item.targetId === targetId);
   if (!result) return;
-  result.matches.forEach((match) => noteSearchState.dismissedMatches.add(match.id));
-  noteSearchState.results = noteSearchState.results.filter((item) => item.targetId !== targetId);
-  noteSearchState.totalMatches = noteSearchState.results.reduce((total, item) => total + item.matches.length, 0);
-  noteSearchState.totalNotes = noteSearchState.results.length;
-  noteSearchResultsSignature = getNoteSearchResultsSignature(noteSearchState.results, noteSearchState.totalMatches);
-  renderNoteSearchResults();
+  result.matches.forEach((match) => globalSearchState.dismissedMatches.add(match.id));
+  globalSearchState.results = globalSearchState.results.filter((item) => item.targetId !== targetId);
+  globalSearchState.totalMatches = globalSearchState.results.reduce((total, item) => total + item.matches.length, 0);
+  globalSearchState.totalItems = globalSearchState.results.length;
+  globalSearchResultsSignature = getGlobalSearchResultsSignature(globalSearchState.results, globalSearchState.totalMatches);
+  renderGlobalSearchResults();
 }
 
-async function openNoteSearchMatch(match, options = {}) {
+async function openGlobalSearchMatch(match, options = {}) {
   const tab =
     match.type === "tab"
       ? tabData.find((item) => item._searchTargetId === match.tabId)
@@ -6865,10 +6864,10 @@ async function openNoteSearchMatch(match, options = {}) {
   if (!tab || !monacoEditor) return;
   if (match.type === "tab") switchTab(tab);
 
-  revealSearchRange(createRangeFromNoteSearchMatch(match));
+  revealSearchRange(createRangeFromGlobalSearchMatch(match));
 }
 
-function createRangeFromNoteSearchMatch(match) {
+function createRangeFromGlobalSearchMatch(match) {
   if (!match?.range) return null;
   return new monaco.Range(
     match.range.startLineNumber,
@@ -6911,7 +6910,7 @@ async function getOpenTabPayload(tab) {
   };
 }
 
-async function getNoteSearchMatchTabPayload(match) {
+async function getGlobalSearchMatchTabPayload(match) {
   let payload = null;
   if (match?.type === "note" && match.noteId) {
     payload = await getNoteTabPayload(match.noteId);
@@ -7045,7 +7044,6 @@ async function convertNoteToFile(noteId) {
   await window.electronAPI.deleteNote(noteId);
   if (openTab) removeTabAndAdjustUI(openTab);
   await loadFileByPath(filePath);
-  updateRecentFiles(filePath);
   await renderNotesList();
   await populateRecentMenu();
   showMessage("file-saved");
@@ -7160,7 +7158,7 @@ function moveTabToDropPlacement(tab, placement = null) {
   normalizePinnedTabs();
   updateTabAdjacencyClasses();
   scheduleAllUnsavedTabAutosaves();
-  if (oldIndex !== finalIndex) scheduleNoteSearchAfterTabSetChange();
+  if (oldIndex !== finalIndex) scheduleGlobalSearchAfterTabSetChange();
   return tab;
 }
 
@@ -7205,7 +7203,7 @@ function moveTabToIndex(tab, index) {
   normalizePinnedTabs();
   updateTabAdjacencyClasses();
   scheduleAllUnsavedTabAutosaves();
-  scheduleNoteSearchAfterTabSetChange();
+  scheduleGlobalSearchAfterTabSetChange();
   return tab;
 }
 
@@ -7214,9 +7212,9 @@ function getOpenNoteTabById(noteId) {
 }
 
 let noteDragState = null;
-let noteSearchDragState = null;
+let globalSearchDragState = null;
 let suppressNoteClick = false;
-let suppressNoteSearchMatchClick = false;
+let suppressGlobalSearchMatchClick = false;
 let notePreviewOpenSeq = 0;
 const pendingNoteOpens = new Map();
 
@@ -7226,10 +7224,10 @@ function beginNoteListDrag(e, item) {
     return;
   }
   if (e.button !== 0 || e.target.closest(".note-pin-button")) return;
-  startNotePanelDragFromItem(item, e);
+  startSidePanelNoteDragFromItem(item, e);
 }
 
-function startNotePanelDragFromItem(item, e, options = {}) {
+function startSidePanelNoteDragFromItem(item, e, options = {}) {
   noteDragState = {
     item,
     noteId: item.dataset.noteId,
@@ -7255,8 +7253,8 @@ function isPointInRect(x, y, rect) {
   return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
 }
 
-function isPointInNotePanel(e) {
-  return isPointInRect(e.clientX, e.clientY, notesPanel.getBoundingClientRect());
+function isPointInSidePanel(e) {
+  return isPointInRect(e.clientX, e.clientY, sidePanel.getBoundingClientRect());
 }
 
 function resetNoteListDragItem(item) {
@@ -7394,7 +7392,7 @@ function updateNoteExternalDragPreview(e) {
   });
 }
 
-function resumeNotePanelDrag(e) {
+function resumeSidePanelNoteDrag(e) {
   if (!noteDragState) return;
   const state = noteDragState;
   cleanupNoteExternalDrag();
@@ -7458,57 +7456,57 @@ function cancelNoteDragByShortcut() {
   noteDragState = null;
 }
 
-function beginNoteSearchMatchDrag(e, row, match) {
+function beginGlobalSearchMatchDrag(e, row, match) {
   if (e.button === 1) {
     e.preventDefault();
     return;
   }
-  if (e.button !== 0 || e.target.closest(".notes-search-dismiss")) return;
-  noteSearchDragState = {
+  if (e.button !== 0 || e.target.closest(".global-search-dismiss")) return;
+  globalSearchDragState = {
     row,
     match,
     startX: e.clientX,
     startY: e.clientY,
     dragging: false,
     externalStarted: false,
-    payloadPromise: getNoteSearchMatchTabPayload(match),
+    payloadPromise: getGlobalSearchMatchTabPayload(match),
   };
 }
 
-function resetNoteSearchMatchDragRow(row) {
+function resetGlobalSearchMatchDragRow(row) {
   if (!row) return;
   row.classList.remove("dragging");
   row.style.pointerEvents = "";
 }
 
-function applyNoteSearchMatchDragRowStyle(row) {
+function applyGlobalSearchMatchDragRowStyle(row) {
   if (!row) return;
   row.classList.add("dragging");
   row.style.pointerEvents = "none";
 }
 
-async function startNoteSearchMatchExternalDrag(e) {
-  if (!noteSearchDragState || noteSearchDragState.externalStarted) return;
-  const state = noteSearchDragState;
+async function startGlobalSearchMatchExternalDrag(e) {
+  if (!globalSearchDragState || globalSearchDragState.externalStarted) return;
+  const state = globalSearchDragState;
   state.externalStarted = true;
   state.dragging = true;
-  applyNoteSearchMatchDragRowStyle(state.row);
+  applyGlobalSearchMatchDragRowStyle(state.row);
   windowBoundsCache = await window.electronAPI.getMyBounds();
-  if (noteSearchDragState !== state) return;
+  if (globalSearchDragState !== state) return;
   dragStartClientPos = { x: e.clientX, y: e.clientY };
-  externalCancelDragging = cancelNoteSearchMatchDragByShortcut;
+  externalCancelDragging = cancelGlobalSearchMatchDragByShortcut;
   overlayWindowVisible = true;
   document.body.classList.add("note-external-dragging");
   window.electronAPI.createCursorWindow();
-  updateNoteSearchMatchExternalDragPreview(e);
+  updateGlobalSearchMatchExternalDragPreview(e);
 }
 
-async function updateNoteSearchMatchExternalDragPreview(e) {
-  const state = noteSearchDragState;
+async function updateGlobalSearchMatchExternalDragPreview(e) {
+  const state = globalSearchDragState;
   if (!state?.externalStarted) return;
   scheduleCursorWindowMove(e.screenX, e.screenY);
   const payload = await state.payloadPromise;
-  if (!payload || noteSearchDragState !== state) return;
+  if (!payload || globalSearchDragState !== state) return;
   const existingTab = getExistingTabForPayload(payload);
   const isPinnedExistingTab = Boolean(existingTab?.isPinned);
   const canMovePinnedInThisWindow = isPinnedExistingTab && isScreenPointInMyWindow(e) && getPinnedTabCount() > 1;
@@ -7519,7 +7517,7 @@ async function updateNoteSearchMatchExternalDragPreview(e) {
     return;
   }
 
-  if (isPointInNotePanel(e)) {
+  if (isPointInSidePanel(e)) {
     resetExternalPreviewTargetWindow();
     window.electronAPI.setCursorWindowState("forbidden");
     hideDropIndicator();
@@ -7539,7 +7537,7 @@ async function updateNoteSearchMatchExternalDragPreview(e) {
   if (!shouldCheckTargetWindow) return;
 
   const targetWindowId = await window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY });
-  if (!noteSearchDragState?.externalStarted) return;
+  if (!globalSearchDragState?.externalStarted) return;
   const isInMyWindow = isScreenPointInMyWindow(e);
   let isTargetMinimized = false;
   if (targetWindowId) isTargetMinimized = await window.electronAPI.isWindowMinimized(targetWindowId);
@@ -7556,8 +7554,8 @@ async function updateNoteSearchMatchExternalDragPreview(e) {
   hideDropIndicator();
 }
 
-async function finishNoteSearchMatchExternalDrag(e) {
-  const state = noteSearchDragState;
+async function finishGlobalSearchMatchExternalDrag(e) {
+  const state = globalSearchDragState;
   if (!state) return;
   const payload = await state.payloadPromise;
   const isInMyWindow = isScreenPointInMyWindow(e);
@@ -7568,13 +7566,13 @@ async function finishNoteSearchMatchExternalDrag(e) {
       }
     : { x: e.screenX, y: e.screenY };
 
-  resetNoteSearchMatchDragRow(state.row);
+  resetGlobalSearchMatchDragRow(state.row);
   cleanupNoteExternalDrag();
-  noteSearchDragState = null;
+  globalSearchDragState = null;
   if (!payload) return;
   const existingTab = getExistingTabForPayload(payload);
   if (existingTab?.isPinned && !isInMyWindow) return;
-  if (isPointInNotePanel(e)) return;
+  if (isPointInSidePanel(e)) return;
 
   const targetWindowId = await window.electronAPI.getWindowIdAt({ x: e.screenX, y: e.screenY });
   if (targetWindowId && targetWindowId !== myWindowId && !isInMyWindow) {
@@ -7600,37 +7598,37 @@ async function finishNoteSearchMatchExternalDrag(e) {
   await window.electronAPI.createNewWindowWithTab(payload, position);
 }
 
-function cancelNoteSearchMatchDragByShortcut() {
-  if (!noteSearchDragState) return;
-  resetNoteSearchMatchDragRow(noteSearchDragState.row);
+function cancelGlobalSearchMatchDragByShortcut() {
+  if (!globalSearchDragState) return;
+  resetGlobalSearchMatchDragRow(globalSearchDragState.row);
   cleanupNoteExternalDrag();
-  noteSearchDragState = null;
+  globalSearchDragState = null;
 }
 
 window.addEventListener("mousemove", (e) => {
-  if (noteSearchDragState) {
-    if (!noteSearchDragState.dragging) {
+  if (globalSearchDragState) {
+    if (!globalSearchDragState.dragging) {
       const moved =
-        Math.abs(e.clientX - noteSearchDragState.startX) >= 5 || Math.abs(e.clientY - noteSearchDragState.startY) >= 5;
+        Math.abs(e.clientX - globalSearchDragState.startX) >= 5 || Math.abs(e.clientY - globalSearchDragState.startY) >= 5;
       if (!moved) return;
-      noteSearchDragState.dragging = true;
-      applyNoteSearchMatchDragRowStyle(noteSearchDragState.row);
-      startNoteSearchMatchExternalDrag(e);
+      globalSearchDragState.dragging = true;
+      applyGlobalSearchMatchDragRowStyle(globalSearchDragState.row);
+      startGlobalSearchMatchExternalDrag(e);
       return;
     }
-    if (!noteSearchDragState.externalStarted) {
-      startNoteSearchMatchExternalDrag(e);
+    if (!globalSearchDragState.externalStarted) {
+      startGlobalSearchMatchExternalDrag(e);
       return;
     }
-    updateNoteSearchMatchExternalDragPreview(e);
+    updateGlobalSearchMatchExternalDragPreview(e);
     return;
   }
 
   if (!noteDragState) return;
   const { item, startY } = noteDragState;
   if (noteDragState.mode === "external") {
-    if (isPointInNotePanel(e)) {
-      resumeNotePanelDrag(e);
+    if (isPointInSidePanel(e)) {
+      resumeSidePanelNoteDrag(e);
       return;
     }
     updateNoteExternalDragPreview(e);
@@ -7644,7 +7642,7 @@ window.addEventListener("mousemove", (e) => {
     applyNoteListDragItemStyle(item);
   }
 
-  if (!isPointInNotePanel(e)) {
+  if (!isPointInSidePanel(e)) {
     startNoteExternalDrag(e);
     return;
   }
@@ -7688,18 +7686,18 @@ window.addEventListener("mousemove", (e) => {
 });
 
 window.addEventListener("mouseup", async (e) => {
-  if (noteSearchDragState) {
-    const { row, dragging } = noteSearchDragState;
+  if (globalSearchDragState) {
+    const { row, dragging } = globalSearchDragState;
     if (dragging) {
-      suppressNoteSearchMatchClick = true;
+      suppressGlobalSearchMatchClick = true;
       setTimeout(() => {
-        suppressNoteSearchMatchClick = false;
+        suppressGlobalSearchMatchClick = false;
       }, 0);
-      await finishNoteSearchMatchExternalDrag(e);
+      await finishGlobalSearchMatchExternalDrag(e);
       return;
     }
-    resetNoteSearchMatchDragRow(row);
-    noteSearchDragState = null;
+    resetGlobalSearchMatchDragRow(row);
+    globalSearchDragState = null;
     return;
   }
 
@@ -8492,8 +8490,8 @@ async function closeTopOverlayByEscape() {
     return true;
   }
 
-  if (document.body.classList.contains("notes-panel-open")) {
-    setNotesPanelOpen(false);
+  if (document.body.classList.contains("side-panel-open")) {
+    setSidePanelOpen(false);
     return true;
   }
 
@@ -8562,7 +8560,7 @@ window.addEventListener("keydown", async (e) => {
   // Ctrl + B
   if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.code === "KeyB") {
     e.preventDefault();
-    toggleNotesPanel();
+    toggleSidePanel();
   }
   // Ctrl + O
   if ((e.ctrlKey || e.metaKey) && e.code === "KeyO") {

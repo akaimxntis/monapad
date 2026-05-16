@@ -29,7 +29,7 @@
     "print": "Drucken",
     "settings": "Einstellungen",
     "notes": "Notizen",
-    "sideBar": "Seitenleiste",
+    "sidePanel": "Seitenpanel",
     "theme": "Designs",
     "about": "Über",
     "onyx": "Onyx",
@@ -123,12 +123,12 @@
     "creator": "Ersteller",
     "disclaimer": "Haftungsausschluss"
   },
-  "notePanel": {
+  "sidePanel": {
     "search": "Suchen",
     "notesSection": "Notizen",
     "searchSection": "Tabs & Notizen suchen",
     "newNote": "Neue Notiz",
-    "closePanel": "Seitenleiste schließen",
+    "closePanel": "Seitenpanel schließen",
     "copyText": "Text kopieren",
     "duplicate": "Duplizieren",
     "convertToUntitled": "In unbenannt umwandeln",

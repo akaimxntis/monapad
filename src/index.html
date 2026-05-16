@@ -88,9 +88,9 @@
         --window-top-safe-area: 1px; /* to prevent windows 11 border from overlapping the content, set to 0px if not needed */
         --toolbar-height: 35px;
         --status-bar-height: 25px;
-        --notes-panel-width: 260px;
+        --side-panel-width: 260px;
         --editor-line-number-offset: 0px;
-        --editor-notes-panel-offset: 0px;
+        --editor-side-panel-offset: 0px;
 
         /* You can specify one or more fonts to be used in the editor in order of priority */
         /* If this field is not empty, the font setting in the app will be ignored */
@@ -246,12 +246,12 @@
       } */
       .monaco-hover.workbench-hover {
         bottom: -33px !important;
-        transform: translateX(calc(var(--editor-line-number-offset) + var(--editor-notes-panel-offset))) !important;
+        transform: translateX(calc(var(--editor-line-number-offset) + var(--editor-side-panel-offset))) !important;
       }
       /* tooltip arrow */
       .workbench-hover-pointer {
         margin-bottom: -33px !important;
-        transform: translateX(calc(var(--editor-line-number-offset) + var(--editor-notes-panel-offset))) !important;
+        transform: translateX(calc(var(--editor-line-number-offset) + var(--editor-side-panel-offset))) !important;
       }
 
       line,
@@ -301,8 +301,8 @@
         -webkit-app-region: drag;
         transition: left 180ms ease;
       }
-      body.notes-panel-open #toolbar {
-        left: calc(var(--notes-panel-width) - 41px);
+      body.side-panel-open #toolbar {
+        left: calc(var(--side-panel-width) - 41px);
       }
       #menu-button {
         -webkit-app-region: no-drag;
@@ -534,7 +534,7 @@
         overflow: visible;
         transition: max-width 180ms ease;
       }
-      body.notes-panel-open #tabs-container:has(.tab)::before {
+      body.side-panel-open #tabs-container:has(.tab)::before {
         content: "";
         position: absolute;
         left: 0;
@@ -545,8 +545,8 @@
         pointer-events: none;
         z-index: 0;
       }
-      body.notes-panel-open #tabs-container {
-        max-width: calc(100vw - 230px - var(--notes-panel-width) + 41px);
+      body.side-panel-open #tabs-container {
+        max-width: calc(100vw - 230px - var(--side-panel-width) + 41px);
       }
       #tabs {
         position: relative;
@@ -1383,7 +1383,7 @@
         overflow-anchor: none;
         scroll-behavior: auto !important;
       }
-      #notes-panel {
+      #side-panel {
         position: fixed;
         display: flex;
         flex-direction: column;
@@ -1391,12 +1391,12 @@
         left: 0;
         z-index: 9995;
         -webkit-app-region: no-drag;
-        width: var(--notes-panel-width);
+        width: var(--side-panel-width);
         height: calc(100vh - var(--status-bar-height));
         background: var(--color2);
         border-right: 1px solid var(--color3);
         box-sizing: border-box;
-        transform: translateX(calc(-1 * var(--notes-panel-width)));
+        transform: translateX(calc(-1 * var(--side-panel-width)));
         transition: transform 180ms ease;
         user-select: none;
         overflow: hidden;
@@ -1404,13 +1404,13 @@
         scroll-behavior: auto !important;
         padding-top: calc(var(--window-top-safe-area) + var(--toolbar-height));
       }
-      body.notes-panel-open #notes-panel {
+      body.side-panel-open #side-panel {
         transform: translateX(0);
       }
-      body.notes-panel-open:not(.status-bar-visible) #notes-panel {
+      body.side-panel-open:not(.status-bar-visible) #side-panel {
         height: 100vh;
       }
-      #notes-panel-close {
+      #side-panel-close {
         position: absolute;
         top: var(--window-top-safe-area);
         right: 5px;
@@ -1433,15 +1433,15 @@
         -webkit-app-region: no-drag;
         z-index: 1;
       }
-      body.notes-panel-open #notes-panel-close {
+      body.side-panel-open #side-panel-close {
         opacity: 1;
         pointer-events: auto;
         transition-delay: 80ms, 0ms;
       }
-      #notes-panel-close:hover {
+      #side-panel-close:hover {
         background: var(--color3);
       }
-      #notes-panel-drag-fill {
+      #side-panel-drag-fill {
         position: absolute;
         top: var(--window-top-safe-area);
         left: 40px;
@@ -1450,14 +1450,14 @@
         /* -webkit-app-region: drag; */
         pointer-events: none;
       }
-      #notes-panel-tools {
+      #side-panel-tools {
         flex: 0 0 auto;
         display: block;
         padding: 0 10px;
         margin: 10px 0;
         box-sizing: border-box;
       }
-      #notes-search {
+      #global-search {
         flex: 1;
         min-width: 0;
         height: 26px;
@@ -1471,21 +1471,21 @@
         font-size: 14px;
         user-select: text;
       }
-      #notes-search::placeholder {
+      #global-search::placeholder {
         color: var(--grayOut);
       }
-      #notes-search-wrap {
+      #global-search-wrap {
         flex: 1;
         min-width: 0;
         position: relative;
         display: flex;
         align-items: center;
       }
-      #notes-search {
+      #global-search {
         width: 100%;
         padding-right: 70px;
       }
-      #notes-search-placeholder {
+      #global-search-placeholder {
         position: absolute;
         display: flex;
         align-items: center;
@@ -1500,13 +1500,13 @@
         white-space: nowrap;
         pointer-events: none;
       }
-      #notes-search-placeholder.hidden {
+      #global-search-placeholder.hidden {
         display: none;
       }
-      .notes-search-history-symbol {
+      .global-search-history-symbol {
         font-family: "Figtree", sans-serif;
       }
-      #notes-search-actions {
+      #global-search-actions {
         position: absolute;
         top: 0;
         right: 3px;
@@ -1516,7 +1516,7 @@
         gap: 2px;
         pointer-events: auto;
       }
-      .notes-search-toggle {
+      .global-search-toggle {
         width: 20px;
         height: 20px;
         border: none;
@@ -1530,7 +1530,7 @@
         line-height: 1;
         cursor: pointer;
       }
-      .notes-search-toggle.codicon[class*="codicon-"] {
+      .global-search-toggle.codicon[class*="codicon-"] {
         font-size: 16px;
         line-height: 1;
       }
@@ -1564,23 +1564,23 @@
       .codicon.codicon-expand-all::before {
         content: "\eb95";
       }
-      .notes-search-toggle:hover,
-      .notes-search-toggle.active {
+      .global-search-toggle:hover,
+      .global-search-toggle.active {
         background: var(--color3);
         color: var(--editorText);
       }
-      .notes-search-toggle.active {
+      .global-search-toggle.active {
         background: color-mix(in srgb, var(--highlight) 25%, transparent);
         outline: 1px solid var(--highlight);
       }
-      #notes-search-section {
+      #global-search-section {
         width: 100%;
         min-width: 0;
         display: flex;
         flex-direction: column;
         gap: 5px;
       }
-      #notes-search-actionbar,
+      #global-search-actionbar,
       #notes-list-actionbar {
         display: flex;
         align-items: center;
@@ -1591,7 +1591,7 @@
         height: 22px;
         box-sizing: border-box;
       }
-      #notes-search-actionbar {
+      #global-search-actionbar {
         padding: 0 0 0 10px;
       }
       #notes-list-actionbar {
@@ -1599,14 +1599,14 @@
         padding: 0 10px 0 20px;
         margin: 10px 0 5px 0;
       }
-      body.notes-search-active #notes-list-actionbar {
+      body.global-search-active #notes-list-actionbar {
         display: none;
       }
-      #notes-search-actionbar li,
+      #global-search-actionbar li,
       #notes-list-actionbar li {
         display: flex;
       }
-      .notes-panel-actionbar-label {
+      .side-panel-actionbar-label {
         flex: 1 1 auto;
         min-width: 0;
         color: var(--grayOut);
@@ -1617,7 +1617,7 @@
         text-transform: uppercase;
         user-select: none;
       }
-      .notes-panel-action {
+      .side-panel-action {
         width: 22px;
         height: 22px;
         border: none;
@@ -1631,15 +1631,15 @@
         line-height: 1;
         cursor: pointer;
       }
-      .notes-panel-action.codicon[class*="codicon-"] {
+      .side-panel-action.codicon[class*="codicon-"] {
         font-size: 16px;
         line-height: 1;
       }
-      .notes-panel-action:hover:not(:disabled) {
+      .side-panel-action:hover:not(:disabled) {
         background: var(--color3);
         color: var(--editorText);
       }
-      .notes-panel-action:disabled {
+      .side-panel-action:disabled {
         opacity: 0.45;
         cursor: default;
       }
@@ -1649,10 +1649,10 @@
         overflow-y: auto;
         padding: 0 0 115px 0;
       }
-      body.notes-search-active #notes-list {
+      body.global-search-active #notes-list {
         display: none;
       }
-      #notes-search-results {
+      #global-search-results {
         flex: 1 1 auto;
         min-height: 0;
         display: none;
@@ -1660,10 +1660,10 @@
         font-size: 13px;
         color: var(--editorText);
       }
-      body.notes-search-active #notes-search-results {
+      body.global-search-active #global-search-results {
         display: flex;
       }
-      #notes-search-results-list {
+      #global-search-results-list {
         flex: 1 1 auto;
         min-height: 0;
         overflow-y: auto;
@@ -1671,10 +1671,10 @@
         display: none;
         padding: 0 0 115px 0;
       }
-      body.notes-search-active #notes-search-results-list {
+      body.global-search-active #global-search-results-list {
         display: block;
       }
-      .notes-search-summary {
+      .global-search-summary {
         flex: 0 0 auto;
         height: 24px;
         line-height: 24px;
@@ -1685,7 +1685,7 @@
         text-overflow: ellipsis;
         box-sizing: border-box;
       }
-      .notes-search-warning {
+      .global-search-warning {
         flex: 0 0 auto;
         padding: 0 10px 4px 20px;
         color: var(--grayOut);
@@ -1693,22 +1693,22 @@
         line-height: 18px;
         box-sizing: border-box;
       }
-      .notes-search-warning-icon {
+      .global-search-warning-icon {
         display: inline-block;
         margin-right: 3px;
         vertical-align: -3px;
         color: var(--warn);
         font: normal normal normal 16px/18px codicon;
       }
-      .notes-search-warning-icon::before {
+      .global-search-warning-icon::before {
         content: "\ea6c";
       }
-      .notes-search-message {
+      .global-search-message {
         padding: 12px 20px;
         color: var(--grayOut);
         line-height: 1.4;
       }
-      .notes-search-file {
+      .global-search-file {
         position: sticky;
         top: 0;
         z-index: 2;
@@ -1720,11 +1720,11 @@
         background: var(--color2);
         cursor: default;
       }
-      .notes-search-file:hover,
-      .notes-search-match:hover {
+      .global-search-file:hover,
+      .global-search-match:hover {
         background: var(--color3);
       }
-      .notes-search-twistie {
+      .global-search-twistie {
         flex: 0 0 16px;
         width: 16px;
         margin-right: 2px;
@@ -1732,14 +1732,14 @@
         font-size: 10px;
         line-height: 1;
       }
-      .notes-search-file-label {
+      .global-search-file-label {
         min-width: 0;
         flex: 1 1 auto;
         display: flex;
         align-items: baseline;
         overflow: hidden;
       }
-      .notes-search-file-title {
+      .global-search-file-title {
         min-width: 0;
         flex: 0 1 auto;
         max-width: 100%;
@@ -1747,10 +1747,10 @@
         white-space: nowrap;
         text-overflow: ellipsis;
       }
-      .notes-search-file.note-target .notes-search-file-title {
+      .global-search-file.note-target .global-search-file-title {
         color: var(--highlight);
       }
-      .notes-search-file-path {
+      .global-search-file-path {
         display: none;
         min-width: 0;
         flex: 1 1 auto;
@@ -1761,22 +1761,22 @@
         white-space: nowrap;
         text-overflow: ellipsis;
       }
-      .notes-search-file-path:empty {
+      .global-search-file-path:empty {
         display: none;
       }
-      .notes-search-file.show-path .notes-search-file-path {
+      .global-search-file.show-path .global-search-file-path {
         display: block;
       }
-      .notes-search-file.show-path .notes-search-file-title {
+      .global-search-file.show-path .global-search-file-title {
         flex: 0 0 auto;
         max-width: none;
         overflow: visible;
         text-overflow: clip;
       }
-      .notes-search-file:hover .notes-search-count {
+      .global-search-file:hover .global-search-count {
         display: none;
       }
-      .notes-search-file .notes-search-file-dismiss.codicon[class*="codicon-"] {
+      .global-search-file .global-search-file-dismiss.codicon[class*="codicon-"] {
         flex: 0 0 20px;
         width: 20px;
         height: 20px;
@@ -1790,16 +1790,16 @@
         justify-content: center;
         cursor: pointer;
       }
-      .notes-search-file:hover .notes-search-file-dismiss.codicon[class*="codicon-"] {
+      .global-search-file:hover .global-search-file-dismiss.codicon[class*="codicon-"] {
         display: flex;
       }
-      .notes-search-file-dismiss:hover {
+      .global-search-file-dismiss:hover {
         color: var(--editorText);
       }
-      .notes-search-file .notes-search-file-dismiss.codicon[class*="codicon-"]:hover {
+      .global-search-file .global-search-file-dismiss.codicon[class*="codicon-"]:hover {
         color: var(--editorText);
       }
-      .notes-search-count {
+      .global-search-count {
         flex: 0 0 auto;
         min-width: 18px;
         height: 18px;
@@ -1813,7 +1813,7 @@
         line-height: 18px;
         text-align: center;
       }
-      .notes-search-match {
+      .global-search-match {
         position: relative;
         display: flex;
         align-items: center;
@@ -1823,10 +1823,10 @@
         cursor: default;
         color: var(--editorText);
       }
-      .notes-search-match:hover {
+      .global-search-match:hover {
         padding-right: 28px;
       }
-      .notes-search-preview {
+      .global-search-preview {
         min-width: 0;
         flex: 1 1 auto;
         display: flex;
@@ -1836,15 +1836,15 @@
         font-family: "Iosevka", "Migu 1M", monospace;
         font-size: 12px;
       }
-      .notes-search-match:not(.preview-ready) .notes-search-preview {
+      .global-search-match:not(.preview-ready) .global-search-preview {
         visibility: hidden;
       }
-      .notes-search-before {
+      .global-search-before {
         flex: 0 0 auto;
         overflow: visible;
         white-space: pre;
       }
-      .notes-search-hit {
+      .global-search-hit {
         flex: 0 0 auto;
         overflow: visible;
         white-space: pre;
@@ -1854,14 +1854,14 @@
         );
         color: var(--editorText);
       }
-      .notes-search-after {
+      .global-search-after {
         min-width: 0;
         flex: 1 1 auto;
         overflow: hidden;
         white-space: pre;
         text-overflow: ellipsis;
       }
-      .notes-search-match .notes-search-dismiss.codicon[class*="codicon-"] {
+      .global-search-match .global-search-dismiss.codicon[class*="codicon-"] {
         position: absolute;
         top: 1px;
         right: 8px;
@@ -1877,28 +1877,28 @@
         justify-content: center;
         cursor: pointer;
       }
-      .notes-search-match:hover .notes-search-dismiss.codicon[class*="codicon-"] {
+      .global-search-match:hover .global-search-dismiss.codicon[class*="codicon-"] {
         display: flex;
       }
-      .notes-search-dismiss:hover {
+      .global-search-dismiss:hover {
         color: var(--editorText);
       }
-      .notes-search-match .notes-search-dismiss.codicon[class*="codicon-"]:hover {
+      .global-search-match .global-search-dismiss.codicon[class*="codicon-"]:hover {
         color: var(--editorText);
       }
-      .notes-search-dismiss.codicon[class*="codicon-"],
-      .notes-search-file-dismiss.codicon[class*="codicon-"],
-      .notes-search-twistie.codicon[class*="codicon-"] {
+      .global-search-dismiss.codicon[class*="codicon-"],
+      .global-search-file-dismiss.codicon[class*="codicon-"],
+      .global-search-twistie.codicon[class*="codicon-"] {
         font-size: 16px;
         line-height: 1;
       }
-      .notes-search-file.collapsed + .notes-search-match-group {
+      .global-search-file.collapsed + .global-search-match-group {
         display: none;
       }
-      .notes-search-file.collapsed .notes-search-twistie {
+      .global-search-file.collapsed .global-search-twistie {
         transform: rotate(-90deg);
       }
-      #notes-search.invalid {
+      #global-search.invalid {
         outline: 1px solid var(--vscode-inputValidation-errorBorder, var(--warn));
       }
       .note-list-item {
@@ -1972,7 +1972,7 @@
         fill: var(--editorText);
         stroke: var(--editorText);
       }
-      #notes-panel-menu-button {
+      #side-panel-menu-button {
         position: absolute;
         top: var(--window-top-safe-area);
         left: 0;
@@ -1988,14 +1988,14 @@
         cursor: pointer;
         -webkit-app-region: no-drag;
       }
-      #notes-panel-menu-button svg {
+      #side-panel-menu-button svg {
         overflow: visible;
       }
-      #notes-panel-menu-button svg line {
+      #side-panel-menu-button svg line {
         stroke: var(--grayOut) !important;
         stroke-width: 2px;
       }
-      #notes-panel-menu-button:hover svg line {
+      #side-panel-menu-button:hover svg line {
         stroke: var(--highlight) !important;
       }
       #settings-menu h1 {
@@ -2299,8 +2299,8 @@
             <polyline fill="none" stroke="#fff" stroke-miterlimit="10" points=".35 9.42 4.94 4.83 .35 .36" />
           </svg>
         </button>
-        <button id="toggleNotesPanelBtn">
-          <span class="label">Side Bar</span>
+        <button id="toggleSidePanelBtn">
+          <span class="label">Side Panel</span>
           <span class="shortcut">Ctrl + B</span>
         </button>
         <button id="settingsBtn">
@@ -2356,9 +2356,9 @@
         </button>
       </div>
 
-      <!-- notes panel -->
-      <aside id="notes-panel" aria-hidden="true">
-        <button id="notes-panel-menu-button" aria-label="Menu">
+      <!-- side panel -->
+      <aside id="side-panel" aria-hidden="true">
+        <button id="side-panel-menu-button" aria-label="Menu">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 15.16 7.2" width="16" height="8">
             <line
               x1="0.64"
@@ -2382,8 +2382,8 @@
             />
           </svg>
         </button>
-        <div id="notes-panel-drag-fill"></div>
-        <button id="notes-panel-close" aria-label="Close Side Bar">
+        <div id="side-panel-drag-fill"></div>
+        <button id="side-panel-close" aria-label="Close Side Panel">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8.74 8.74" width="10" height="10">
             <line
               x1="8.24"
@@ -2407,54 +2407,54 @@
             />
           </svg>
         </button>
-        <div id="notes-panel-tools">
-          <div id="notes-search-section">
-            <ul id="notes-search-actionbar" aria-label="Search Actions">
-              <li class="notes-panel-actionbar-label" id="notes-search-heading">Search</li>
+        <div id="side-panel-tools">
+          <div id="global-search-section">
+            <ul id="global-search-actionbar" aria-label="Search Actions">
+              <li class="side-panel-actionbar-label" id="global-search-heading">Search</li>
               <li>
                 <button
-                  class="notes-panel-action codicon codicon-refresh"
-                  id="notes-search-refresh"
+                  class="side-panel-action codicon codicon-refresh"
+                  id="global-search-refresh"
                   type="button"
                   aria-label="Refresh"
                 ></button>
               </li>
               <li>
                 <button
-                  class="notes-panel-action codicon codicon-clear-all"
-                  id="notes-search-clear"
+                  class="side-panel-action codicon codicon-clear-all"
+                  id="global-search-clear"
                   type="button"
                   aria-label="Clear Search Results"
                 ></button>
               </li>
               <li>
                 <button
-                  class="notes-panel-action codicon codicon-collapse-all"
-                  id="notes-search-collapse"
+                  class="side-panel-action codicon codicon-collapse-all"
+                  id="global-search-collapse"
                   type="button"
                   aria-label="Collapse All"
                 ></button>
               </li>
             </ul>
-            <div id="notes-search-wrap">
-              <input id="notes-search" type="text" placeholder="" spellcheck="false" />
-              <span id="notes-search-placeholder" aria-hidden="true"></span>
-              <div id="notes-search-actions" aria-hidden="false">
+            <div id="global-search-wrap">
+              <input id="global-search" type="text" placeholder="" spellcheck="false" />
+              <span id="global-search-placeholder" aria-hidden="true"></span>
+              <div id="global-search-actions" aria-hidden="false">
                 <button
-                  class="notes-search-toggle codicon codicon-case-sensitive"
-                  id="notes-search-case"
+                  class="global-search-toggle codicon codicon-case-sensitive"
+                  id="global-search-case"
                   type="button"
                   aria-label="Match Case"
                 ></button>
                 <button
-                  class="notes-search-toggle codicon codicon-whole-word"
-                  id="notes-search-word"
+                  class="global-search-toggle codicon codicon-whole-word"
+                  id="global-search-word"
                   type="button"
                   aria-label="Match Whole Word"
                 ></button>
                 <button
-                  class="notes-search-toggle codicon codicon-regex"
-                  id="notes-search-regex"
+                  class="global-search-toggle codicon codicon-regex"
+                  id="global-search-regex"
                   type="button"
                   aria-label="Use Regular Expression"
                 ></button>
@@ -2463,10 +2463,10 @@
           </div>
         </div>
         <ul id="notes-list-actionbar" aria-label="Notes Actions">
-          <li class="notes-panel-actionbar-label" id="notes-list-heading">Notes</li>
+          <li class="side-panel-actionbar-label" id="notes-list-heading">Notes</li>
           <li>
             <button
-              class="notes-panel-action codicon codicon-add"
+              class="side-panel-action codicon codicon-add"
               id="notes-add"
               type="button"
               aria-label="New Note"
@@ -2474,7 +2474,7 @@
           </li>
           <li>
             <button
-              class="notes-panel-action codicon codicon-refresh"
+              class="side-panel-action codicon codicon-refresh"
               id="notes-list-refresh"
               type="button"
               aria-label="Refresh"
@@ -2482,8 +2482,8 @@
           </li>
         </ul>
         <div id="notes-list" class="scrollable"></div>
-        <div id="notes-search-results">
-          <div id="notes-search-results-list" class="scrollable"></div>
+        <div id="global-search-results">
+          <div id="global-search-results-list" class="scrollable"></div>
         </div>
       </aside>
 
