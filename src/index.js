@@ -454,7 +454,7 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
   }
 
   // create new tab
-  const newTabData = createTab(payload.name, payload.content, payload.path, insertIndex);
+  const newTabData = createTab(payload.name, payload.content, payload.path, insertIndex, payload);
 
   // restore tab data
   newTabData.isFileSaved = payload.isFileSaved;
@@ -1800,10 +1800,56 @@ function acceptSelfSaveFileChange(tab, content) {
   tab.isFileSaved = true;
   tab.isWarned = false;
   tab._lastExternalContent = content;
+  markTabSavedAsUtf8(tab);
   clearPendingSelfSave(tab);
   tab.element.querySelector(".name")?.classList.remove("warn");
   tab.element.querySelector(".close")?.classList.remove("show-unsaved");
   reloadButton(tab, null, "remove");
+  if (tab === currentTab) updateStatusBar();
+}
+
+function normalizeFileReadResult(result) {
+  if (result === null || result === undefined) return null;
+  if (typeof result === "string") {
+    return {
+      content: result,
+      encoding: "UTF-8",
+      isUtf8Valid: true,
+      hasBom: false,
+    };
+  }
+  if (typeof result === "object" && typeof result.content === "string") {
+    return {
+      content: result.content,
+      encoding: result.encoding || (result.isUtf8Valid === false ? "Invalid UTF-8" : "UTF-8"),
+      isUtf8Valid: result.isUtf8Valid !== false,
+      hasBom: Boolean(result.hasBom),
+    };
+  }
+  return null;
+}
+
+async function readFileWithEncodingInfo(filePath) {
+  const result =
+    typeof window.electronAPI.readFileWithEncoding === "function"
+      ? await window.electronAPI.readFileWithEncoding(filePath)
+      : await window.electronAPI.readFile(filePath);
+  return normalizeFileReadResult(result);
+}
+
+function applyFileEncodingInfo(tab, fileInfo = null) {
+  if (!tab) return;
+  tab.sourceEncoding = fileInfo?.encoding || "UTF-8";
+  tab.isUtf8Valid = fileInfo?.isUtf8Valid !== false;
+  tab.hasUtf8Bom = Boolean(fileInfo?.hasBom);
+}
+
+function markTabSavedAsUtf8(tab) {
+  applyFileEncodingInfo(tab, {
+    encoding: "UTF-8",
+    isUtf8Valid: true,
+    hasBom: false,
+  });
   if (tab === currentTab) updateStatusBar();
 }
 
@@ -3889,7 +3935,8 @@ function updateStatusBar() {
   const position = monacoEditor.getPosition();
   const model = monacoEditor.getModel();
   const eol = model.getEOL();
-  const currentEncoding = "UTF-8";
+  const currentEncoding = currentTab?.sourceEncoding || "UTF-8";
+  const isEncodingValid = currentTab?.isUtf8Valid !== false;
 
   let lineEnding = "Unknown";
   if (eol === "\r\n") {
@@ -3923,8 +3970,9 @@ function updateStatusBar() {
   }${selectionText}`;
   zoomLevelEl.textContent = `${Math.round((fontSize / persistentFontSize) * 100)}%`;
   lineEndingEl.textContent = lineEnding;
-  encodingEl.textContent = currentEncoding;
-  encodingEl.title = i18next.t("statusBar.encodingTooltip");
+  encodingEl.textContent = isEncodingValid ? currentEncoding : i18next.t("statusBar.invalidEncodingLabel");
+  encodingEl.classList.toggle("warn", !isEncodingValid);
+  encodingEl.title = isEncodingValid ? i18next.t("statusBar.encodingTooltip") : i18next.t("statusBar.invalidEncodingTooltip");
 }
 
 // drag & drop indicator when dragging tab to another window
@@ -4467,7 +4515,7 @@ function clearPendingTabsWidthAfterClose() {
 }
 
 // create tab
-function createTab(name, content = "", path = null, insertIndex = null) {
+function createTab(name, content = "", path = null, insertIndex = null, options = {}) {
   if (!name) name = `${i18next.t("file.untitled")}.txt`;
   const targetInsertIndex = clampUnpinnedTabInsertIndex(insertIndex);
 
@@ -4523,6 +4571,9 @@ function createTab(name, content = "", path = null, insertIndex = null) {
     isMarkdown: false,
     isWarned: false,
     isPinned: false,
+    sourceEncoding: options.sourceEncoding || "UTF-8",
+    isUtf8Valid: options.isUtf8Valid !== false,
+    hasUtf8Bom: Boolean(options.hasBom),
     originalContent: content,
     _lastExternalContent: path ? content : null,
     draftId: path ? null : createAutosaveId(),
@@ -5343,7 +5394,8 @@ async function refreshFileTabStateOnActivate(tab) {
 
   try {
     tab._needsDiskRefresh = false;
-    const content = await window.electronAPI.readFile(tab.path);
+    const fileInfo = await readFileWithEncodingInfo(tab.path);
+    const content = fileInfo?.content;
     if (tab !== currentTab) return;
 
     if (content === null || content === undefined) {
@@ -5359,6 +5411,7 @@ async function refreshFileTabStateOnActivate(tab) {
     if (tabContextMenu.style.display !== "none") updateTabContextMenuState(tabContextMenu, tab);
 
     if (content === tab._lastExternalContent) {
+      applyFileEncodingInfo(tab, fileInfo);
       reloadButton(tab, null, "remove");
       return;
     }
@@ -5369,12 +5422,14 @@ async function refreshFileTabStateOnActivate(tab) {
     }
 
     if (tab.isFileSaved && normalizeTextForModelComparison(content) === tab.originalContent) {
+      applyFileEncodingInfo(tab, fileInfo);
       tab._lastExternalContent = content;
       reloadButton(tab, null, "remove");
       return;
     }
 
     if (!tabHasUnsavedContent(tab)) {
+      applyFileEncodingInfo(tab, fileInfo);
       applyFileContentToEditor(tab, content);
       return;
     }
@@ -5412,8 +5467,10 @@ window.electronAPI.onFileChanged((event, { filePath, eventType }) => {
 
 async function handleFileChange(targetTab, filePath) {
   let content = null;
+  let fileInfo = null;
   try {
-    content = await window.electronAPI.readFile(filePath);
+    fileInfo = await readFileWithEncodingInfo(filePath);
+    content = fileInfo?.content ?? null;
   } catch (e) {
     content = null;
   }
@@ -5434,6 +5491,7 @@ async function handleFileChange(targetTab, filePath) {
 
   // Ignore watcher noise if the on-disk content is unchanged from the last known disk snapshot.
   if (content === targetTab._lastExternalContent) {
+    if (fileInfo) applyFileEncodingInfo(targetTab, fileInfo);
     reloadButton(targetTab, null, "remove");
     return;
   }
@@ -5445,11 +5503,13 @@ async function handleFileChange(targetTab, filePath) {
 
   if (targetTab.isFileSaved && normalizeTextForModelComparison(content) === targetTab.originalContent) {
     reloadButton(targetTab, null, "remove");
+    if (fileInfo) applyFileEncodingInfo(targetTab, fileInfo);
     targetTab._lastExternalContent = content;
     return;
   }
 
   if (!tabHasUnsavedContent(targetTab)) {
+    if (fileInfo) applyFileEncodingInfo(targetTab, fileInfo);
     applyFileContentToEditor(targetTab, content);
     return;
   }
@@ -5523,8 +5583,10 @@ function reloadButton(tab, filePath, mode) {
     button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
-      const content = await window.electronAPI.readFile(filePath);
+      const fileInfo = await readFileWithEncodingInfo(filePath);
+      const content = fileInfo?.content;
       if (content === null || content === undefined) return;
+      applyFileEncodingInfo(tab, fileInfo);
       if (tab !== currentTab) switchTab(tab);
       applyFileContentToEditor(tab, content);
     });
@@ -5554,7 +5616,8 @@ async function loadFileByPath(filePath, insertIndex = null, options = {}) {
     return;
   }
 
-  const content = await window.electronAPI.readFile(filePath);
+  const fileInfo = await readFileWithEncodingInfo(filePath);
+  const content = fileInfo?.content;
   if (content === null || content === undefined) {
     console.error("Failed to read file.");
     return;
@@ -5578,6 +5641,7 @@ async function loadFileByPath(filePath, insertIndex = null, options = {}) {
       singleTab.name = fileName;
       singleTab._lastExternalContent = content;
       singleTab.path = filePath;
+      applyFileEncodingInfo(singleTab, fileInfo);
       singleTab.draftId = null;
       singleTab.isFileSaved = true;
       singleTab.isMarkdown = isMarkdownFile;
@@ -5620,7 +5684,7 @@ async function loadFileByPath(filePath, insertIndex = null, options = {}) {
     targetIndex = Math.max(0, targetIndex);
   }
 
-  const newTabData = createTab(fileName, content, filePath, targetIndex);
+  const newTabData = createTab(fileName, content, filePath, targetIndex, fileInfo);
   const modelContent = newTabData.model.getValue();
   newTabData.content = modelContent;
   newTabData.originalContent = modelContent;
@@ -7147,6 +7211,9 @@ async function getOpenTabPayload(tab) {
     fontSize: tab.fontSize,
     wordWrap: tab.wordWrap,
     isMarkdown: tab.isMarkdown,
+    sourceEncoding: tab.sourceEncoding,
+    isUtf8Valid: tab.isUtf8Valid,
+    hasBom: tab.hasUtf8Bom,
     draftId: tab.draftId,
     hasReloadButton: tab.element?.classList.contains("has-reload-button"),
   };
@@ -7200,7 +7267,7 @@ async function openTabPayloadInCurrentWindow(payload, placement = { index: null,
     tabData = [];
   }
 
-  const tab = createTab(payload.name, payload.content, payload.path, insertIndex);
+  const tab = createTab(payload.name, payload.content, payload.path, insertIndex, payload);
   tab.isFileSaved = payload.isFileSaved;
   tab.originalContent = payload.originalContent;
   tab.fontSize = payload.fontSize;
@@ -8114,6 +8181,7 @@ async function saveAsFile() {
     active.originalContent = content;
     active.isFileSaved = true;
     active._lastExternalContent = content;
+    markTabSavedAsUtf8(active);
     active.draftId = null;
     clearAutosaveTimer(active);
     if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
@@ -8169,6 +8237,7 @@ async function saveFile() {
     active.originalContent = content;
     active.isFileSaved = true;
     active._lastExternalContent = content;
+    markTabSavedAsUtf8(active);
     clearAutosaveTimer(active);
     await window.electronAPI.discardFileAutosaveBackup(active.path);
 

@@ -6,6 +6,7 @@ const fs = require("fs");
 const http = require("http");
 const os = require("os");
 const crypto = require("crypto");
+const { TextDecoder } = require("util");
 const Store = require("electron-store").default;
 const log = require("electron-log");
 const logDir = path.dirname(log.transports.file.getFile().path);
@@ -413,9 +414,34 @@ ipcMain.handle("file:save", async (event, filePath, content) => {
   }
 });
 
+function readFileWithUtf8Info(buffer) {
+  const hasBom = buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf;
+  let isUtf8Valid = true;
+  try {
+    new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    isUtf8Valid = false;
+  }
+  return {
+    content: buffer.toString("utf8"),
+    encoding: isUtf8Valid ? (hasBom ? "UTF-8 with BOM" : "UTF-8") : "Invalid UTF-8",
+    isUtf8Valid,
+    hasBom,
+  };
+}
+
 ipcMain.handle("file:read", async (event, filePath) => {
   try {
     return await fs.promises.readFile(filePath, "utf8");
+  } catch {
+    return null;
+  }
+});
+
+ipcMain.handle("file:readWithEncoding", async (event, filePath) => {
+  try {
+    const buffer = await fs.promises.readFile(filePath);
+    return readFileWithUtf8Info(buffer);
   } catch {
     return null;
   }

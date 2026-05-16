@@ -7,6 +7,8 @@
     "col": "列",
     "selection": "(已选择 {{count}} 项)",
     "encodingTooltip": "此编辑器仅支持 UTF-8 编码。\n如需使用其他编码，请在打开前转换为 UTF-8。",
+    "invalidEncodingLabel": "无效 UTF-8",
+    "invalidEncodingTooltip": "此文件不是有效的 UTF-8，打开时部分字符可能已被替换。\n保存后文件将以 UTF-8 写入。",
     "chordFirst": "已按下 ({{first}})。正在等待快捷键组合的第二个键...",
     "chordNext": "已按下 ({{keys}})。正在等待快捷键组合的下一个键...",
     "chordMissing": "按键组合 ({{keys}}) 不是命令。"

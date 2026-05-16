@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   saveToFile: (filePath, content) => ipcRenderer.invoke("file:save", filePath, content),
   showSaveDialog: (defaultName) => ipcRenderer.invoke("dialog:saveFile", defaultName),
   readFile: (filePath) => ipcRenderer.invoke("file:read", filePath),
+  readFileWithEncoding: (filePath) => ipcRenderer.invoke("file:readWithEncoding", filePath),
   showMessageBox: (options) => ipcRenderer.invoke("show-message-box", options),
   createNewWindow: () => ipcRenderer.invoke("window:createNew"),
 
