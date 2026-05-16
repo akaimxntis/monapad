@@ -300,6 +300,9 @@
       .disabled polyline {
         stroke: var(--grayOut) !important;
       }
+      .disabled .codicon {
+        color: var(--grayOut) !important;
+      }
       #container {
         display: flex;
         flex-direction: column;
@@ -387,6 +390,12 @@
         cursor: pointer;
         padding: 0 10px;
       }
+      #menu #openRecent,
+      #menu #changeTheme {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
       #menu button:hover {
         background: var(--color3);
       }
@@ -460,7 +469,7 @@
         align-items: center;
       }
 
-      #theme-menu button[data-theme="custom-theme"] span {
+      #theme-menu button[data-theme="custom-theme"] span:not(.checkmark) {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -476,13 +485,34 @@
       }
 
       #theme-menu button .checkmark {
-        display: inline-block;
+        display: inline-flex;
         opacity: 0;
         margin-left: 20px;
       }
 
       #theme-menu button.active .checkmark {
         opacity: 1;
+      }
+      .menu-chevron,
+      .checkmark {
+        flex: 0 0 22px;
+        width: 22px;
+        height: 22px;
+        align-items: center;
+        justify-content: center;
+        color: var(--editorText);
+        line-height: 1;
+        position: relative;
+      }
+      .menu-chevron {
+        display: inline-flex;
+      }
+      .menu-chevron::before,
+      .checkmark::before {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
       }
 
       #recent-menu {
@@ -712,34 +742,22 @@
       }
       .tab.pinned .close .pin-svg {
         display: flex;
-        line-height: 0;
         align-items: center;
         justify-content: center;
         width: 20px;
         height: 20px;
         margin-right: -5px;
         border-radius: 5px;
+        color: var(--editorText);
       }
       .tab.pinned .close .pin-svg:hover {
         background: var(--color3);
       }
-      .tab.pinned .close .pin-svg svg {
-        width: 17px;
-        height: 17px;
+      .tab.pinned .close .pin-svg.dirty:hover::before {
+        content: "\eba0";
       }
-      .tab.pinned .close .pin-svg svg path,
-      .tab.pinned .close .pin-svg svg circle {
-        stroke: var(--editorText);
-      }
-      .tab.pinned .close .pin-svg svg circle {
-        fill: var(--editorText);
-      }
-      .tab.pinned:not(.active):not(:hover) .close .pin-svg svg path,
-      .tab.pinned:not(.active):not(:hover) .close .pin-svg svg circle {
-        stroke: var(--grayOut);
-      }
-      .tab.pinned:not(.active):not(:hover) .close .pin-svg svg circle {
-        fill: var(--grayOut);
+      .tab.pinned:not(.active):not(:hover) .close .pin-svg {
+        color: var(--grayOut);
       }
       #tabs:not(.compact) .tab:hover .close .close-svg,
       .tab.active .close .close-svg,
@@ -852,6 +870,7 @@
         align-items: center;
         justify-content: center;
         transform: translateX(-5px);
+        color: var(--highlight);
       }
       .tab .reload-button:hover {
         background: var(--color3);
@@ -861,15 +880,6 @@
       }
       .tab:not(.active):hover .reload-button {
         opacity: 1;
-      }
-      .tab .reload-button svg {
-        width: 12px;
-        height: 12px;
-        overflow: visible;
-      }
-      .tab .reload-button svg path {
-        stroke-width: 2px;
-        stroke: var(--highlight);
       }
 
       #add-tab {
@@ -1558,7 +1568,7 @@
         line-height: 1;
         cursor: pointer;
       }
-      .global-search-toggle.codicon[class*="codicon-"] {
+      .codicon[class*="codicon-"] {
         font-size: 16px;
         line-height: 1;
       }
@@ -1574,6 +1584,15 @@
       .codicon.codicon-chevron-down::before {
         content: "\eab4";
       }
+      .codicon.codicon-chevron-up::before {
+        content: "\eab7";
+      }
+      .codicon.codicon-chevron-right::before {
+        content: "\eab6";
+      }
+      .codicon.codicon-check::before {
+        content: "\eab2";
+      }
       .codicon.codicon-close::before {
         content: "\ea76";
       }
@@ -1582,6 +1601,15 @@
       }
       .codicon.codicon-refresh::before {
         content: "\eb37";
+      }
+      .codicon.codicon-pin::before {
+        content: "\eb2b";
+      }
+      .codicon.codicon-pinned::before {
+        content: "\eba0";
+      }
+      .codicon.codicon-pinned-dirty::before {
+        content: "\ebb2";
       }
       .codicon.codicon-clear-all::before {
         content: "\eabf";
@@ -1658,10 +1686,6 @@
         justify-content: center;
         line-height: 1;
         cursor: pointer;
-      }
-      .side-panel-action.codicon[class*="codicon-"] {
-        font-size: 16px;
-        line-height: 1;
       }
       .side-panel-action:hover:not(:disabled) {
         background: var(--color3);
@@ -1914,12 +1938,6 @@
       .global-search-match .global-search-dismiss.codicon[class*="codicon-"]:hover {
         color: var(--editorText);
       }
-      .global-search-dismiss.codicon[class*="codicon-"],
-      .global-search-file-dismiss.codicon[class*="codicon-"],
-      .global-search-twistie.codicon[class*="codicon-"] {
-        font-size: 16px;
-        line-height: 1;
-      }
       .global-search-file.collapsed + .global-search-match-group {
         display: none;
       }
@@ -1969,10 +1987,10 @@
         border: none;
         border-radius: 5px;
         background: none;
-        color: var(--editorText);
         display: none;
         align-items: center;
         justify-content: center;
+        color: var(--grayOut);
       }
       #notes-list:not(:has(.note-list-item.dragging)) .note-pin-button {
         cursor: pointer;
@@ -1981,24 +1999,15 @@
       .note-list-item.dragging .note-pin-button,
       .note-list-item.pinned .note-pin-button {
         display: flex;
+        align-items: center;
+        justify-content: center;
       }
-      .note-pin-button svg {
-        width: 18px;
-        height: 18px;
+      .note-pin-button:not(.codicon-pinned).codicon[class*="codicon-"] {
+        display: none;
       }
-      .note-list-item.pinned .note-pin-button svg {
-        fill: var(--grayOut);
-        stroke: var(--grayOut);
-      }
-      .note-pin-button svg path {
-        stroke: var(--grayOut);
-      }
-      #notes-list:not(:has(.note-list-item.dragging)) .note-pin-button:hover svg path {
-        stroke: var(--editorText);
-      }
-      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.pinned .note-pin-button:hover svg {
-        fill: var(--editorText);
-        stroke: var(--editorText);
+      #notes-list:not(:has(.note-list-item.dragging)) .note-pin-button:hover {
+        display: flex;
+        color: var(--editorText);
       }
       #side-panel-menu-button {
         position: absolute;
@@ -2040,29 +2049,11 @@
         user-select: none;
       }
       #settings-menu h1:not(:first-child) {
-        margin-top: 20px;
+        margin-top: 30px;
       }
       #settings-menu .reset {
-        display: none;
-        cursor: pointer;
-        align-items: center;
-        justify-content: center;
-        width: 17px;
-        opacity: 0.5;
-      }
-      #settings-menu h1:hover .reset {
         display: flex;
-      }
-      #settings-menu .reset svg {
-        width: 12px;
-        height: 12px;
-      }
-      #settings-menu .reset svg path {
-        stroke-width: 2px;
-        stroke: var(--grayOut);
-      }
-      #settings-menu h1 .reset:hover {
-        opacity: 1;
+        flex: 0 0 22px;
       }
       #settings-menu .hr {
         height: 1px;
@@ -2116,8 +2107,8 @@
       }
       .size-change-btn {
         cursor: pointer;
-        width: 25px;
-        height: 25px;
+        width: 22px;
+        height: 22px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -2152,16 +2143,20 @@
       }
       #font-select-wrapper::after,
       #lang-select-wrapper::after {
-        content: "";
+        content: "\eab4";
         position: absolute;
         pointer-events: none;
-        top: 12px;
+        top: 3px;
         right: 0px;
-        width: 14px;
-        height: 7px;
-        background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9.77 5.65"><polyline fill="none" stroke="%23b6b9bf" stroke-miterlimit="10" points=".35 .35 4.94 4.94 9.41 .35"/></svg>')
-          no-repeat center;
-        background-size: contain;
+        width: 22px;
+        height: 22px;
+        color: var(--editorText);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: codicon;
+        font-size: 16px;
+        line-height: 1;
       }
       .settings-info {
         color: var(--grayOut);
@@ -2273,15 +2268,7 @@
         </button>
         <button id="openRecent">
           <span class="btn-text">Open Recent</span>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 5.65 9.77"
-            width="7.8"
-            height="13"
-            style="margin-left: 6px; vertical-align: middle"
-          >
-            <polyline fill="none" stroke="#fff" stroke-miterlimit="10" points=".35 9.42 4.94 4.83 .35 .36" />
-          </svg>
+          <span class="menu-chevron codicon codicon-chevron-right"></span>
         </button>
         <button id="saveFileBtn">
           <span class="label">Save</span>
@@ -2320,15 +2307,7 @@
         <!-- <button id="print-button">Print</button> -->
         <button id="changeTheme">
           <span class="btn-text">Themes</span>
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 5.65 9.77"
-            width="7.8"
-            height="13"
-            style="margin-left: 6px; vertical-align: middle"
-          >
-            <polyline fill="none" stroke="#fff" stroke-miterlimit="10" points=".35 9.42 4.94 4.83 .35 .36" />
-          </svg>
+          <span class="menu-chevron codicon codicon-chevron-right"></span>
         </button>
         <button id="toggleSidePanelBtn">
           <span class="label">Side Panel</span>
@@ -2345,45 +2324,15 @@
       <div id="theme-menu" class="scrollable">
         <button data-theme="onyx">
           <span>Onyx</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <button data-theme="dark">
           <span>Dark</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <button data-theme="ash">
           <span>Ash</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
       </div>
 
@@ -2602,31 +2551,11 @@
         <div class="hr"></div>
         <button data-action="wordWrap" id="word-wrap">
           <span>Word Wrap</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="display: inline-block; width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <button data-action="toggleMarkdown" id="toggle-markdown">
           <span>Markdown Mode</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="display: none; width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
       </div>
 
@@ -2676,116 +2605,35 @@
         <!-- Editor Layout -->
         <h1 id="settingsLayout">
           <span class="h1">Editor</span>
-          <span class="reset" title="Reset Settings">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 17 17">
-              <path
-                fill="none"
-                stroke="#fff"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M16.43,9.54c-.57,4.38-4.59,7.47-8.97,6.89C3.08,15.86,0,11.84.57,7.46.99,4.22,3.34,1.57,6.51.76c3.9-1,7.94,1.01,9.43,4.75"
-              />
-              <path fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" d="M16.5.5v5h-5" />
-            </svg>
-          </span>
+          <span class="reset side-panel-action codicon codicon-refresh" title="Reset Settings"></span>
         </h1>
         <button id="line-highlight">
           <span>Line Highlight</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <button id="line-num">
           <span>Line Numbers</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <button id="toggleFolding">
           <span>Folding</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <button id="minimap">
           <span>Minimap</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <button id="toggleSyntaxHighlight">
           <span>Syntax Highlighting</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <button id="toggleStatusBar">
           <span>Status Bar</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="display: none; width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <button id="toggleKuromoji" title="Advanced Japanese word segmentation using Kuromoji.js">
           <span>Japanese Morphological Analysis</span>
-          <svg
-            class="checkmark"
-            xmlns="http://www.w3.org/2000/svg"
-            viewBox="0 0 10.23 7.15"
-            style="display: none; width: 13px; height: 13px; stroke: #fff; fill: none"
-          >
-            <polyline
-              points=".5 3.58 3.58 6.65 9.73 .5"
-              style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-            />
-          </svg>
+          <span class="checkmark codicon codicon-check"></span>
         </button>
         <div class="row">
           <div class="label tabSize">Tab Size</div>
@@ -2833,18 +2681,7 @@
         <!-- Font -->
         <h1 class="font">
           <span class="h1">Font</span>
-          <span class="reset" title="Reset Settings">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 17 17">
-              <path
-                fill="none"
-                stroke="#fff"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M16.43,9.54c-.57,4.38-4.59,7.47-8.97,6.89C3.08,15.86,0,11.84.57,7.46.99,4.22,3.34,1.57,6.51.76c3.9-1,7.94,1.01,9.43,4.75"
-              />
-              <path fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" d="M16.5.5v5h-5" />
-            </svg>
-          </span>
+          <span class="reset side-panel-action codicon codicon-refresh" title="Reset Settings"></span>
         </h1>
         <div class="row select-row font-select-row">
           <select id="font-family-select" class="scrollable"></select>

@@ -59,23 +59,31 @@
 .choices__list[aria-expanded] .choices__item--selectable.is-highlighted {
   background-color: var(--color3);
 }
-/* arrow svg */
+/* arrow codicon */
 .choices[data-type*="select-one"]::after {
   border: none;
-  content: "";
+  content: "\eab4";
   position: absolute;
   pointer-events: none;
-  top: 12px;
+  top: 3px;
   right: 0px;
-  width: 14px;
-  height: 7px;
-  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9.77 5.65"><polyline fill="none" stroke="%23b6b9bf" stroke-miterlimit="10" points=".35 .35 4.94 4.94 9.41 .35"/></svg>')
-    no-repeat center;
-  background-size: contain;
+  width: 22px;
+  height: 22px;
+  color: var(--editorText);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: codicon;
+  font-size: 16px;
+  line-height: 1;
+  margin-top: 0;
+  transform-origin: center;
 }
 .choices[data-type*="select-one"].is-open::after {
-  transform: scaleY(-1);
-  margin-top: -2px;
+  content: "\eab4";
+  top: 3px;
+  margin-top: 0;
+  transform: rotate(180deg);
 }
 /* font input */
 .choices[data-type*="select-one"] .choices__input {

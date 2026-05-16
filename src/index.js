@@ -168,8 +168,6 @@ const WRAP_MEASURE_OPTIONS = {
   disableMonospaceOptimizations: true,
 };
 
-const TAB_PIN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/></svg>`;
-const TAB_PIN_DIRTY_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18.15 10.35l1.35 -1.35" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l5.37 5.37" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M9 15l-4.5 4.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><path d="M14.5 4l5.5 5.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/><circle cx="16.94" cy="16.44" r="3.06" fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/></svg>`;
 const AUTOSAVE_DEBOUNCE_MS = 3000;
 const AUTOSAVE_FORCE_MS = 30000;
 const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
@@ -232,7 +230,6 @@ let globalSearchState = {
   dismissedMatches: new Set(),
 };
 const noteContentCache = new Map();
-const NOTE_PIN_ICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4.5l-4 4l-4 1.5l-1.5 1.5l7 7l1.5 -1.5l1.5 -4l4 -4"/><path d="M9 15l-4.5 4.5"/><path d="M14.5 4l5.5 5.5"/></svg>`;
 
 // watch only active tab, remove old watcher when tab switched (switchTab)
 let currentWatchedFilePath = null;
@@ -558,6 +555,7 @@ function updateMenuLabels() {
   document.querySelector('button[data-theme="onyx"] span').textContent = i18next.t("menu.onyx");
   document.querySelector('button[data-theme="dark"] span').textContent = i18next.t("menu.dark");
   document.querySelector('button[data-theme="ash"] span').textContent = i18next.t("menu.ash");
+  updateMainMenuState();
 
   // message
   document.getElementById("file-saved").textContent = i18next.t("message.saved");
@@ -669,6 +667,10 @@ function updateMenuLabels() {
   document.getElementById("website").textContent = i18next.t("modal.website");
   document.getElementById("creator").textContent = i18next.t("modal.creator");
   document.getElementById("disclaimer-title").textContent = i18next.t("modal.disclaimer");
+}
+
+function updateMainMenuState() {
+  saveAsNoteBtn?.classList.toggle("disabled", Boolean(currentTab?.isNote));
 }
 
 langSwitcher.addEventListener("change", () => {
@@ -2244,8 +2246,7 @@ function updatePinnedTabIcon(tab) {
   if (!tab.isPinned) return;
 
   const pinSvg = document.createElement("div");
-  pinSvg.className = `pin-svg${tab.isFileSaved ? "" : " dirty"}`;
-  pinSvg.innerHTML = tab.isFileSaved ? TAB_PIN_ICON_SVG : TAB_PIN_DIRTY_ICON_SVG;
+  pinSvg.className = `pin-svg codicon ${tab.isFileSaved ? "codicon-pinned" : "codicon-pinned-dirty dirty"}`;
   const label = i18next.t("tabMenu.unpin");
   pinSvg.title = label;
   pinSvg.setAttribute("aria-label", label);
@@ -2792,17 +2793,17 @@ function applySettings() {
   });
   updateEditorLeftMargin();
 
-  document.querySelector("#line-highlight .checkmark").style.display = settings.lineHighlight ? "inline-block" : "none";
-  document.querySelector("#line-num .checkmark").style.display = settings.lineNumbers ? "inline-block" : "none";
+  document.querySelector("#line-highlight .checkmark").style.display = settings.lineHighlight ? "inline-flex" : "none";
+  document.querySelector("#line-num .checkmark").style.display = settings.lineNumbers ? "inline-flex" : "none";
   document
     .querySelector("#minimap .checkmark")
-    ?.style?.setProperty("display", settings.minimap ? "inline-block" : "none");
+    ?.style?.setProperty("display", settings.minimap ? "inline-flex" : "none");
   document.querySelector("#toggleSyntaxHighlight .checkmark").style.display = settings.syntaxHighlight
-    ? "inline-block"
+    ? "inline-flex"
     : "none";
-  document.querySelector("#toggleFolding .checkmark").style.display = settings.folding ? "inline-block" : "none";
+  document.querySelector("#toggleFolding .checkmark").style.display = settings.folding ? "inline-flex" : "none";
   document.querySelector("#toggleKuromoji .checkmark").style.display = settings.kuromojiEnabled
-    ? "inline-block"
+    ? "inline-flex"
     : "none";
 
   // status bar visibility
@@ -2811,7 +2812,7 @@ function applySettings() {
   if (settings.statusBarVisible) {
     document.body.classList.add("status-bar-visible");
     statusBar.style.display = "flex";
-    checkmark.style.display = "inline-block";
+    checkmark.style.display = "inline-flex";
     editor.style.height = "calc(100vh - 35px - 25px - var(--window-top-safe-area))";
     settingsMenu.style.height = "calc(100vh - 35px - 25px - var(--window-top-safe-area))";
   } else {
@@ -3353,18 +3354,7 @@ async function addCustomThemesToMenu() {
 
       const button = document.createElement("button");
       button.dataset.theme = themeName;
-      button.innerHTML = `<span>${displayName}</span>
-            <svg
-              class="checkmark"
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 10.23 7.15"
-              style="width: 13px; height: 13px; stroke: #fff; fill: none"
-            >
-              <polyline
-                points=".5 3.58 3.58 6.65 9.73 .5"
-                style="fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round"
-              />
-            </svg>`;
+      button.innerHTML = `<span>${displayName}</span><span class="checkmark codicon codicon-check"></span>`;
       themeMenu.appendChild(button);
     });
 
@@ -4537,7 +4527,7 @@ async function createNewNote() {
 
 async function saveAsNote() {
   const active = tabData.find((t) => t.element.classList.contains("active"));
-  if (!active || !monacoEditor) return false;
+  if (!active || active.isNote || !monacoEditor) return false;
 
   const content = monacoEditor.getValue();
   const note = await window.electronAPI.createNote({ content, title: getNoteTitleFromContent(content) });
@@ -4564,6 +4554,7 @@ async function saveAsNote() {
     active.element.querySelector(".close")?.classList.remove("show-unsaved");
     updateNoteTabTitle(active, content);
     if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
+    updateMainMenuState();
     updateStatusBar();
     await renderNotesList();
     updateRecentNote(active.noteId);
@@ -5182,6 +5173,7 @@ function switchTab(data) {
 
   currentTab = data;
   currentFilePath = data.isNote ? `Note: ${data.name}` : data.path || data.name;
+  updateMainMenuState();
   updateDeviceShareButtonState();
 
   // restore selection, scroll position
@@ -5195,12 +5187,12 @@ function switchTab(data) {
   monaco.editor.setModelLanguage(data.model, isMarkdownOn ? "markdown" : "monapad");
 
   // update WordWrap toggle button UI
-  const wrapBtn = document.querySelector('button[data-action="wordWrap"] svg.checkmark');
-  if (wrapBtn) wrapBtn.style.display = isWordWrapOn ? "inline-block" : "none";
+  const wrapBtn = document.querySelector('button[data-action="wordWrap"] .checkmark');
+  if (wrapBtn) wrapBtn.style.display = isWordWrapOn ? "inline-flex" : "none";
 
   // update Markdown toggle button UI
-  const mdBtn = document.querySelector('button[data-action="toggleMarkdown"] svg.checkmark');
-  if (mdBtn) mdBtn.style.display = isMarkdownOn ? "inline-block" : "none";
+  const mdBtn = document.querySelector('button[data-action="toggleMarkdown"] .checkmark');
+  if (mdBtn) mdBtn.style.display = isMarkdownOn ? "inline-flex" : "none";
 
   applyDecorations();
 
@@ -5397,17 +5389,9 @@ function reloadButton(tab, filePath, mode) {
     if (existing) return; // already exists
 
     const button = document.createElement("button");
-    button.classList.add("reload-button");
+    button.classList.add("reload-button", "codicon", "codicon-refresh");
     tab.element.classList.add("has-reload-button");
     button.title = i18next.t("message.ReloadButtonTooltip");
-    button.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 17 17">
-        <path fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round"
-          d="M16.43,9.54c-.57,4.38-4.59,7.47-8.97,6.89C3.08,15.86,0,11.84.57,7.46.99,4.22,3.34,1.57,6.51.76c3.9-1,7.94,1.01,9.43,4.75"/>
-        <path fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round"
-          d="M16.5.5v5h-5"/>
-      </svg>
-    `;
     button.onclick = async () => {
       const content = await window.electronAPI.readFile(filePath);
       if (tab !== currentTab) switchTab(tab);
@@ -5681,9 +5665,8 @@ async function renderNotesList({ scheduleSearch = true } = {}) {
     title.title = title.textContent;
 
     const pinButton = document.createElement("button");
-    pinButton.className = "note-pin-button";
+    pinButton.className = `note-pin-button codicon ${note.pinned ? "codicon-pinned" : "codicon-pin"}`;
     pinButton.type = "button";
-    pinButton.innerHTML = NOTE_PIN_ICON_SVG;
     const pinLabel = note.pinned ? i18next.t("sidePanel.unpinNote") : i18next.t("sidePanel.pinNote");
     pinButton.setAttribute("aria-label", pinLabel);
     pinButton.title = pinLabel;
@@ -8399,8 +8382,8 @@ customContextMenu.addEventListener("click", async (e) => {
       {
         const btn = e.target.closest('button[data-action="wordWrap"]');
         if (btn) {
-          const svg = btn.querySelector("svg.checkmark");
-          if (svg) svg.style.display = isWordWrapOn ? "inline-block" : "none";
+          const svg = btn.querySelector(".checkmark");
+          if (svg) svg.style.display = isWordWrapOn ? "inline-flex" : "none";
         }
       }
       break;
@@ -8415,8 +8398,8 @@ customContextMenu.addEventListener("click", async (e) => {
       {
         const btn = e.target.closest('button[data-action="toggleMarkdown"]');
         if (btn) {
-          const svg = btn.querySelector("svg.checkmark");
-          if (svg) svg.style.display = isMarkdownOn ? "inline-block" : "none";
+          const svg = btn.querySelector(".checkmark");
+          if (svg) svg.style.display = isMarkdownOn ? "inline-flex" : "none";
         }
       }
       break;
@@ -8443,6 +8426,20 @@ function closeSettingsMenu() {
   langChoices.hideDropdown();
   fontChoices.hideDropdown();
   if (wasOpen) monacoEditor?.focus();
+}
+
+function openSettingsMenu() {
+  closeContextMenus({ focus: false });
+  settingsMenu.style.display = "block";
+  menu.style.display = "none";
+  themeMenu.style.display = "none";
+  recentMenu.style.display = "none";
+  setMenuButtonsPointerEvents("auto");
+}
+
+function toggleSettingsMenu() {
+  if (isSettingsMenuOpen()) closeSettingsMenu();
+  else openSettingsMenu();
 }
 
 function isElementOpen(element) {
@@ -8519,10 +8516,7 @@ async function closeTopOverlayByEscape() {
 
 settingsButton.addEventListener("click", (e) => {
   e.stopPropagation();
-  closeContextMenus({ focus: false });
-  settingsMenu.style.display = "block";
-  menu.style.display = "none";
-  setMenuButtonsPointerEvents("auto");
+  openSettingsMenu();
 });
 editor.addEventListener("click", () => {
   closeSettingsMenu();
@@ -8588,7 +8582,7 @@ window.addEventListener("keydown", async (e) => {
   }
   if ((e.ctrlKey || e.metaKey) && e.code === "Comma") {
     e.preventDefault();
-    settingsMenu.style.display = "block";
+    toggleSettingsMenu();
   }
   // Ctrl + Alt + T
   if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === "KeyT") {

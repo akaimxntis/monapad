@@ -156,10 +156,8 @@
   stroke: var(--color2) !important;
 }
 
-/* dropdown menu svg */
+/* dropdown menu codicon */
 #font-select-wrapper::after,
 #lang-select-wrapper::after {
-  /* add 6 digit hex after %23 to change color */
-  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 9.77 5.65"><polyline fill="none" stroke="%23fafafa" stroke-miterlimit="10" points=".35 .35 4.94 4.94 9.41 .35"/></svg>')
-    no-repeat center;
+  color: #fafafa;
 }
