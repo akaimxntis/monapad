@@ -1437,10 +1437,20 @@
         transform: translateX(calc(-1 * var(--side-panel-width)));
         transition: transform 180ms ease;
         user-select: none;
-        overflow: hidden;
+        /* overflow: hidden; */
         overflow-anchor: none;
         scroll-behavior: auto !important;
         padding-top: calc(var(--window-top-safe-area) + var(--toolbar-height));
+      }
+      body.side-panel-resizing #side-panel,
+      body.side-panel-resizing #toolbar,
+      body.side-panel-resizing #tabs-container,
+      body.side-panel-resizing #editor {
+        transition: none !important;
+      }
+      body.side-panel-resizing {
+        cursor: w-resize;
+        user-select: none;
       }
       body.side-panel-open #side-panel {
         transform: translateX(0);
@@ -1487,6 +1497,43 @@
         height: var(--toolbar-height);
         /* -webkit-app-region: drag; */
         pointer-events: none;
+      }
+      body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging) #side-panel-resize-handle {
+        position: absolute;
+        top: 0;
+        right: -2px;
+        width: 3px;
+        height: 100%;
+        cursor: w-resize;
+        z-index: 3;
+        pointer-events: auto;
+        -webkit-app-region: no-drag;
+      }
+      body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging) #side-panel-resize-handle::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--highlight);
+        opacity: 0;
+        transform: scaleX(0.35);
+        transform-origin: center;
+        transition:
+          opacity 160ms ease 260ms,
+          transform 160ms ease 260ms;
+        pointer-events: none;
+      }
+      body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging).side-panel-open
+        #side-panel-resize-handle:hover::after,
+      body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging).side-panel-resizing
+        #side-panel-resize-handle::after {
+        opacity: 1;
+        transform: scaleX(1);
+      }
+      body:not(.tab-dragging):not(.note-dragging):not(.note-external-dragging).side-panel-resizing
+        #side-panel-resize-handle::after {
+        transition-delay: 0ms;
       }
       #side-panel-tools {
         flex: 0 0 auto;
@@ -2363,6 +2410,7 @@
           </svg>
         </button>
         <div id="side-panel-drag-fill"></div>
+        <div id="side-panel-resize-handle" aria-hidden="true"></div>
         <button id="side-panel-close" aria-label="Close Side Panel">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8.74 8.74" width="10" height="10">
             <line

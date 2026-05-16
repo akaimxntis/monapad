@@ -31,6 +31,7 @@ const settingsMenu = document.getElementById("settings-menu");
 const sidePanel = document.getElementById("side-panel");
 const sidePanelClose = document.getElementById("side-panel-close");
 const sidePanelMenuButton = document.getElementById("side-panel-menu-button");
+const sidePanelResizeHandle = document.getElementById("side-panel-resize-handle");
 const notesAddButton = document.getElementById("notes-add");
 const notesListRefreshButton = document.getElementById("notes-list-refresh");
 const notesListHeading = document.getElementById("notes-list-heading");
@@ -66,6 +67,11 @@ const fontSizeIncrease = document.getElementById("font-size-increase");
 const STORAGE_KEY = "monacoFontSizePersistent";
 const PINNED_TABS_STORAGE_KEY = "monapadPinnedTabs";
 const PINNED_TABS_WINDOW_STORAGE_KEY = "monapadPinnedTabsByWindow";
+const SIDE_PANEL_OPEN_STORAGE_KEY = "monapadSidePanelOpen";
+const SIDE_PANEL_WIDTH_STORAGE_KEY = "monapadSidePanelWidth";
+const SIDE_PANEL_MIN_WIDTH = 200;
+const SIDE_PANEL_MAX_WIDTH = 300;
+const SIDE_PANEL_DEFAULT_WIDTH = 240;
 let persistentFontSize = Number(localStorage.getItem(STORAGE_KEY)) || 16;
 let fontSize = persistentFontSize;
 
@@ -74,6 +80,10 @@ const tabSizeValue = document.getElementById("tab-size-value");
 const tabSizeDecrease = document.getElementById("tab-size-decrease");
 const tabSizeIncrease = document.getElementById("tab-size-increase");
 let tabSize = Math.min(10, Math.max(1, parseInt(localStorage.getItem("tabSize")) || 4));
+
+function clampNumber(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
 
 // status bar
 const statusLeft = document.getElementById("status-left");
@@ -2259,6 +2269,32 @@ function tabHasUnsavedContent(tab) {
   return hasUnsavedChanges(tab, content);
 }
 
+function replaceModelContentPreservingUndo(tab, content) {
+  if (!tab?.model) return "";
+  const nextContent = content ?? "";
+  const currentValue = tab.model.getValue();
+  if (currentValue === nextContent) return currentValue;
+
+  const fullRange = tab.model.getFullModelRange();
+  tab.model.pushStackElement();
+  tab.model.pushEditOperations(
+    [],
+    [
+      {
+        range: fullRange,
+        text: nextContent,
+      },
+    ],
+    () => null,
+  );
+  tab.model.pushStackElement();
+  return tab.model.getValue();
+}
+
+function isTabControlTarget(target) {
+  return Boolean(target?.closest?.(".close, .reload-button"));
+}
+
 function setTabPinned(tab, pinned, options = {}) {
   if (!tab) return false;
   const nextPinned = Boolean(pinned);
@@ -2951,13 +2987,41 @@ setTimeout(() => monacoEditor?.focus(), 0);
   await restoreAutosaveDrafts();
 })();
 
-function setSidePanelOpen(open) {
-  if (document.body.classList.contains("side-panel-open") === open) return;
-  document.body.classList.toggle("side-panel-open", open);
-  sidePanel?.setAttribute("aria-hidden", open ? "false" : "true");
+function getStoredSidePanelOpen() {
+  return localStorage.getItem(SIDE_PANEL_OPEN_STORAGE_KEY) === "true";
+}
+
+function getStoredSidePanelWidth() {
+  const stored = Number(localStorage.getItem(SIDE_PANEL_WIDTH_STORAGE_KEY));
+  return Number.isFinite(stored)
+    ? clampNumber(stored, SIDE_PANEL_MIN_WIDTH, SIDE_PANEL_MAX_WIDTH)
+    : SIDE_PANEL_DEFAULT_WIDTH;
+}
+
+function setSidePanelWidth(width, options = {}) {
+  const nextWidth = clampNumber(Number(width), SIDE_PANEL_MIN_WIDTH, SIDE_PANEL_MAX_WIDTH);
+  if (!Number.isFinite(nextWidth)) return getSidePanelWidth();
+  document.documentElement.style.setProperty("--side-panel-width", `${nextWidth}px`);
+  updateEditorLeftMargin();
+  monacoEditor?.layout();
+  if (options.persist) localStorage.setItem(SIDE_PANEL_WIDTH_STORAGE_KEY, String(Math.round(nextWidth)));
+  return nextWidth;
+}
+
+function setSidePanelOpen(open, options = {}) {
+  const nextOpen = Boolean(open);
+  const wasOpen = document.body.classList.contains("side-panel-open");
+  if (wasOpen === nextOpen && !options.force) {
+    sidePanel?.setAttribute("aria-hidden", nextOpen ? "false" : "true");
+    if (options.persist !== false) localStorage.setItem(SIDE_PANEL_OPEN_STORAGE_KEY, String(nextOpen));
+    return;
+  }
+  document.body.classList.toggle("side-panel-open", nextOpen);
+  sidePanel?.setAttribute("aria-hidden", nextOpen ? "false" : "true");
+  if (options.persist !== false) localStorage.setItem(SIDE_PANEL_OPEN_STORAGE_KEY, String(nextOpen));
   updateEditorLeftMargin();
   updateGlobalSearchActionState();
-  if (open) {
+  if (nextOpen) {
     closeContextMenus({ focus: false });
     renderNotesList();
     menu.style.display = "none";
@@ -2971,7 +3035,7 @@ function setSidePanelOpen(open) {
 function getSidePanelWidth() {
   const value = getComputedStyle(document.documentElement).getPropertyValue("--side-panel-width");
   const width = parseFloat(value);
-  return Number.isFinite(width) ? width : 300;
+  return Number.isFinite(width) ? width : SIDE_PANEL_DEFAULT_WIDTH;
 }
 
 function updateEditorLeftMargin() {
@@ -2993,6 +3057,53 @@ function openGlobalSearchPanel() {
     globalSearchInput?.select();
   });
 }
+
+setSidePanelWidth(getStoredSidePanelWidth(), { persist: false });
+setSidePanelOpen(getStoredSidePanelOpen(), { force: true, persist: false });
+
+function startSidePanelResize(e) {
+  if (!sidePanel || e.button !== 0 || !document.body.classList.contains("side-panel-open")) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const startX = e.clientX;
+  const startWidth = getSidePanelWidth();
+  let latestWidth = startWidth;
+  let resizeFrame = null;
+
+  document.body.classList.add("side-panel-resizing");
+  document.body.style.cursor = "w-resize";
+
+  const applyResize = () => {
+    resizeFrame = null;
+    setSidePanelWidth(latestWidth);
+  };
+
+  const onMouseMove = (moveEvent) => {
+    latestWidth = clampNumber(startWidth + moveEvent.clientX - startX, SIDE_PANEL_MIN_WIDTH, SIDE_PANEL_MAX_WIDTH);
+    if (resizeFrame === null) resizeFrame = requestAnimationFrame(applyResize);
+  };
+
+  const finishResize = () => {
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", finishResize);
+    document.body.classList.remove("side-panel-resizing");
+    document.body.style.cursor = "";
+    if (resizeFrame !== null) {
+      cancelAnimationFrame(resizeFrame);
+      resizeFrame = null;
+    }
+    setSidePanelWidth(latestWidth, { persist: true });
+    monacoEditor?.layout();
+    scheduleGlobalSearchFilePathUpdate();
+    scheduleGlobalSearchPreviewUpdate();
+  };
+
+  document.addEventListener("mousemove", onMouseMove);
+  document.addEventListener("mouseup", finishResize, { once: true });
+}
+
+sidePanelResizeHandle?.addEventListener("mousedown", startSidePanelResize);
 
 window.addEventListener(
   "keydown",
@@ -3897,7 +4008,7 @@ function enableTabDragging(tab, data) {
   let tabOrderChangedDuringDrag = false;
 
   tab.addEventListener("mousedown", async (e) => {
-    if (e.button !== 0 || e.target.closest(".close") || draggingTab) return;
+    if (e.button !== 0 || isTabControlTarget(e.target) || draggingTab) return;
     // console.log("📌mousedown: start");
     isHandlingMouseDown = true;
     tabPendingDeferredMouseUp = tab;
@@ -4447,7 +4558,7 @@ function createTab(name, content = "", path = null, insertIndex = null) {
   };
 
   tab.onclick = (e) => {
-    if (e.target.closest(".close")) return;
+    if (isTabControlTarget(e.target)) return;
     switchTab(data);
   };
 
@@ -5351,29 +5462,36 @@ async function handleFileChange(targetTab, filePath) {
 }
 
 function applyFileContentToEditor(tab, content) {
-  tab._lastExternalContent = content;
-  tab.isFileSaved = true;
+  if (!tab?.model || content === null || content === undefined) return false;
 
   if (tab !== currentTab) switchTab(tab);
   tab.viewState = monacoEditor.saveViewState();
-  tab._ignoreUnsavedCheck = true;
-  tab.model.setValue(content);
-  const modelContent = tab.model.getValue();
+  tab._lastExternalContent = content;
+  tab.originalContent = content;
+  tab.isFileSaved = true;
+
+  const modelContent = replaceModelContentPreservingUndo(tab, content);
   tab.content = modelContent;
   tab.originalContent = modelContent;
+  tab.isFileSaved = !hasUnsavedChanges(tab, modelContent);
 
   monacoEditor.restoreViewState(tab.viewState);
   monacoEditor.focus();
 
   const close = tab.element.querySelector(".close");
-  if (close) close.classList.remove("show-unsaved");
+  if (close) close.classList.toggle("show-unsaved", !tab.isFileSaved);
   updatePinnedTabIcon(tab);
+  if (tab.isFileSaved) {
+    clearAutosaveTimer(tab);
+    deleteTabAutosave(tab);
+  }
 
   updateStatusBar();
   applyDecorations();
   showMessage("file-updated");
   reloadButton(tab, null, "remove");
   console.log("handleFileChange: content updated");
+  return true;
 }
 
 function reloadButton(tab, filePath, mode) {
@@ -5389,15 +5507,22 @@ function reloadButton(tab, filePath, mode) {
     if (existing) return; // already exists
 
     const button = document.createElement("button");
+    button.type = "button";
     button.classList.add("reload-button", "codicon", "codicon-refresh");
     tab.element.classList.add("has-reload-button");
     button.title = i18next.t("message.ReloadButtonTooltip");
-    button.onclick = async () => {
+    button.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
       const content = await window.electronAPI.readFile(filePath);
+      if (content === null || content === undefined) return;
       if (tab !== currentTab) switchTab(tab);
       applyFileContentToEditor(tab, content);
-      reloadButton(tab, null, "remove");
-    };
+    });
 
     const nameEl = tab.element.querySelector(".name");
     if (nameEl?.parentElement) nameEl.parentElement.insertBefore(button, nameEl);
@@ -7260,6 +7385,7 @@ function isPointInSidePanel(e) {
 }
 
 function resetNoteListDragItem(item) {
+  document.body.classList.remove("note-dragging");
   if (!item) return;
   item.classList.remove("dragging");
   item.style.transition = "";
@@ -7270,6 +7396,7 @@ function resetNoteListDragItem(item) {
 }
 
 function applyNoteListDragItemStyle(item) {
+  document.body.classList.add("note-dragging");
   item.classList.add("dragging");
   item.style.transition = "none";
   item.style.position = "relative";
@@ -7710,6 +7837,7 @@ window.addEventListener("mouseup", async (e) => {
     return;
   }
   noteDragState = null;
+  document.body.classList.remove("note-dragging");
   if (!dragging) return;
   suppressNoteClick = true;
   setTimeout(() => {
