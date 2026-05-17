@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   sendMessage: (msg) => ipcRenderer.send("message", msg),
   onReceive: (callback) => ipcRenderer.on("reply", callback),
   openFileDialog: () => ipcRenderer.invoke("dialog:openFile"),
-  saveToFile: (filePath, content) => ipcRenderer.invoke("file:save", filePath, content),
+  saveToFile: (filePath, content, options) => ipcRenderer.invoke("file:save", filePath, content, options),
   showSaveDialog: (defaultName) => ipcRenderer.invoke("dialog:saveFile", defaultName),
   readFile: (filePath) => ipcRenderer.invoke("file:read", filePath),
   readFileWithEncoding: (filePath) => ipcRenderer.invoke("file:readWithEncoding", filePath),

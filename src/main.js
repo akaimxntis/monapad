@@ -405,9 +405,10 @@ ipcMain.handle("dialog:saveFile", async (event, defaultName) => {
   return canceled || !filePath ? {} : { filePath };
 });
 
-ipcMain.handle("file:save", async (event, filePath, content) => {
+ipcMain.handle("file:save", async (event, filePath, content, options = {}) => {
   try {
-    await fs.promises.writeFile(filePath, content, "utf8");
+    const text = options?.bom ? `\uFEFF${content}` : content;
+    await fs.promises.writeFile(filePath, text, "utf8");
     return { success: true };
   } catch (err) {
     return { success: false, error: err.message };
@@ -422,8 +423,10 @@ function readFileWithUtf8Info(buffer) {
   } catch {
     isUtf8Valid = false;
   }
+  let content = buffer.toString("utf8");
+  if (content.length > 0 && content.charCodeAt(0) === 0xfeff) content = content.slice(1);
   return {
-    content: buffer.toString("utf8"),
+    content,
     encoding: isUtf8Valid ? (hasBom ? "UTF-8 with BOM" : "UTF-8") : "Invalid UTF-8",
     isUtf8Valid,
     hasBom,
@@ -432,7 +435,7 @@ function readFileWithUtf8Info(buffer) {
 
 ipcMain.handle("file:read", async (event, filePath) => {
   try {
-    return await fs.promises.readFile(filePath, "utf8");
+    return readFileWithUtf8Info(await fs.promises.readFile(filePath)).content;
   } catch {
     return null;
   }

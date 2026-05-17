@@ -1794,13 +1794,13 @@ function isPendingSelfSaveContent(tab, content) {
   return normalizeTextForModelComparison(content) === normalizeTextForModelComparison(tab._pendingSelfSaveContent);
 }
 
-function acceptSelfSaveFileChange(tab, content) {
+function acceptSelfSaveFileChange(tab, content, fileInfo = null) {
   tab.originalContent = content;
   tab.content = content;
   tab.isFileSaved = true;
   tab.isWarned = false;
   tab._lastExternalContent = content;
-  markTabSavedAsUtf8(tab);
+  applyFileEncodingInfo(tab, fileInfo);
   clearPendingSelfSave(tab);
   tab.element.querySelector(".name")?.classList.remove("warn");
   tab.element.querySelector(".close")?.classList.remove("show-unsaved");
@@ -1844,13 +1844,19 @@ function applyFileEncodingInfo(tab, fileInfo = null) {
   tab.hasUtf8Bom = Boolean(fileInfo?.hasBom);
 }
 
-function markTabSavedAsUtf8(tab) {
-  applyFileEncodingInfo(tab, {
-    encoding: "UTF-8",
-    isUtf8Valid: true,
-    hasBom: false,
-  });
+async function refreshTabEncodingInfoFromDisk(tab) {
+  if (!tab?.path) return null;
+  const fileInfo = await readFileWithEncodingInfo(tab.path);
+  if (!fileInfo) return null;
+  applyFileEncodingInfo(tab, fileInfo);
   if (tab === currentTab) updateStatusBar();
+  return fileInfo;
+}
+
+function getFileSaveOptions(tab, { preserveBom = true } = {}) {
+  return {
+    bom: Boolean(preserveBom && tab?.hasUtf8Bom),
+  };
 }
 
 async function writeNoteTab(tab, content = null, force = false) {
@@ -5417,7 +5423,7 @@ async function refreshFileTabStateOnActivate(tab) {
     }
 
     if (isPendingSelfSaveContent(tab, content)) {
-      acceptSelfSaveFileChange(tab, content);
+      acceptSelfSaveFileChange(tab, content, fileInfo);
       return;
     }
 
@@ -5497,7 +5503,7 @@ async function handleFileChange(targetTab, filePath) {
   }
 
   if (isPendingSelfSaveContent(targetTab, content)) {
-    acceptSelfSaveFileChange(targetTab, content);
+    acceptSelfSaveFileChange(targetTab, content, fileInfo);
     return;
   }
 
@@ -7343,7 +7349,7 @@ async function convertNoteToFile(noteId) {
   const { filePath } = await window.electronAPI.showSaveDialog(defaultName);
   if (!filePath) return false;
 
-  const result = await window.electronAPI.saveToFile(filePath, content);
+  const result = await window.electronAPI.saveToFile(filePath, content, { bom: false });
   if (!result?.success) {
     console.error("Failed to convert note to file:", result?.error);
     return false;
@@ -8152,7 +8158,7 @@ async function saveAsFile() {
     const { filePath } = await window.electronAPI.showSaveDialog(defaultName);
     if (!filePath) return false;
 
-    const result = await window.electronAPI.saveToFile(filePath, content);
+    const result = await window.electronAPI.saveToFile(filePath, content, { bom: false });
     if (result.success) {
       await writeNoteTab(active, content, true);
       updateRecentFiles(filePath);
@@ -8172,7 +8178,7 @@ async function saveAsFile() {
     return false;
   }
 
-  const result = await window.electronAPI.saveToFile(filePath, content);
+  const result = await window.electronAPI.saveToFile(filePath, content, { bom: false });
   if (result.success) {
     active.path = filePath;
     active.name = filePath.split(/[\\/]/).pop();
@@ -8181,8 +8187,8 @@ async function saveAsFile() {
     active.originalContent = content;
     active.isFileSaved = true;
     active._lastExternalContent = content;
-    markTabSavedAsUtf8(active);
     active.draftId = null;
+    await refreshTabEncodingInfoFromDisk(active);
     clearAutosaveTimer(active);
     if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
     await window.electronAPI.discardFileAutosaveBackup(filePath);
@@ -8229,7 +8235,7 @@ async function saveFile() {
 
   const content = monacoEditor.getValue();
   markPendingSelfSave(active, content);
-  const result = await window.electronAPI.saveToFile(active.path, content);
+  const result = await window.electronAPI.saveToFile(active.path, content, getFileSaveOptions(active));
   if (result.success) {
     console.log("File saved successfully");
 
@@ -8237,7 +8243,7 @@ async function saveFile() {
     active.originalContent = content;
     active.isFileSaved = true;
     active._lastExternalContent = content;
-    markTabSavedAsUtf8(active);
+    await refreshTabEncodingInfoFromDisk(active);
     clearAutosaveTimer(active);
     await window.electronAPI.discardFileAutosaveBackup(active.path);
 
