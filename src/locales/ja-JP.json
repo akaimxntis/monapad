@@ -7,6 +7,7 @@
     "col": "列",
     "selection": "({{count}} 文字選択済み)",
     "encodingTooltip": "このエディタはUTF-8のみをサポートしています。\n他の文字エンコーディングを使用する場合は、UTF-8に変換してから開いてください。",
+    "bomEncodingTooltip": "このファイルはBOM付きUTF-8として開かれています。\n上書き保存ではBOMを維持し、名前を付けて保存ではBOMなしのUTF-8として保存します。",
     "invalidEncodingLabel": "無効なUTF-8",
     "invalidEncodingTooltip": "このファイルは有効なUTF-8ではないため、読み込み時に一部の文字が置き換えられている可能性があります。\n保存するとUTF-8として書き込まれます。",
     "chordFirst": "({{first}}) が押されました。次のキー入力を待機しています...",

@@ -7,6 +7,7 @@
     "col": "Sp",
     "selection": "({{count}} ausgewählt)",
     "encodingTooltip": "Dieser Editor unterstützt nur UTF-8.\nWenn du andere Kodierungen verwenden möchtest, konvertiere sie bitte vor dem Öffnen in UTF-8.",
+    "bomEncodingTooltip": "Diese Datei wurde als UTF-8 mit BOM geöffnet.\nBeim Überschreiben bleibt die BOM erhalten; Speichern unter schreibt UTF-8 ohne BOM.",
     "invalidEncodingLabel": "Ungültiges UTF-8",
     "invalidEncodingTooltip": "Diese Datei ist kein gültiges UTF-8. Beim Öffnen wurden möglicherweise einige Zeichen ersetzt.\nBeim Speichern wird die Datei als UTF-8 geschrieben.",
     "chordFirst": "({{first}}) wurde gedrückt. Warte auf die zweite Taste der Tastenkombination...",

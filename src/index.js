@@ -3978,7 +3978,11 @@ function updateStatusBar() {
   lineEndingEl.textContent = lineEnding;
   encodingEl.textContent = isEncodingValid ? currentEncoding : i18next.t("statusBar.invalidEncodingLabel");
   encodingEl.classList.toggle("warn", !isEncodingValid);
-  encodingEl.title = isEncodingValid ? i18next.t("statusBar.encodingTooltip") : i18next.t("statusBar.invalidEncodingTooltip");
+  encodingEl.title = !isEncodingValid
+    ? i18next.t("statusBar.invalidEncodingTooltip")
+    : currentTab?.hasUtf8Bom
+      ? i18next.t("statusBar.bomEncodingTooltip")
+      : i18next.t("statusBar.encodingTooltip");
 }
 
 // drag & drop indicator when dragging tab to another window
