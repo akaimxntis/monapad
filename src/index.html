@@ -276,7 +276,7 @@
       line,
       rect,
       polyline {
-        stroke: var(--editorText) !important;
+        stroke: currentColor;
       }
       button {
         font-family: inherit;
@@ -736,9 +736,11 @@
         height: 20px;
         margin-right: -5px;
         border-radius: 5px;
+        color: var(--grayOut);
       }
       .tab .close .close-svg:hover {
         background: var(--color3);
+        color: var(--editorText);
       }
       .tab.pinned .close .pin-svg {
         display: flex;
@@ -748,10 +750,14 @@
         height: 20px;
         margin-right: -5px;
         border-radius: 5px;
-        color: var(--editorText);
+        color: var(--grayOut);
       }
       .tab.pinned .close .pin-svg:hover {
         background: var(--color3);
+        color: var(--editorText);
+      }
+      .tab.active .close .pin-svg {
+        color: var(--editorText);
       }
       .tab.pinned .close .pin-svg.dirty:hover::before {
         content: "\eba0";
@@ -764,6 +770,9 @@
       #tabs:not(.compact) .tab:hover .close.show-unsaved .close-svg,
       #tabs.compact .tab.active:hover .close .close-svg {
         display: flex;
+      }
+      .tab.active .close .close-svg {
+        color: var(--editorText);
       }
       .tab.pinned .close .close-svg,
       .tab.pinned .close .unsaved-dot {
@@ -887,7 +896,7 @@
         flex-shrink: 0;
         -webkit-app-region: no-drag;
         background: var(--color1);
-        color: var(--editorText);
+        color: var(--grayOut);
         border: none;
         font-size: 18px;
         cursor: pointer;
@@ -900,6 +909,7 @@
         border-radius: 5px;
       }
       #add-tab:hover {
+        color: var(--editorText);
         background: var(--color3);
       }
       #toolbar-drag-fill {
@@ -915,6 +925,7 @@
         -webkit-app-region: no-drag;
       }
 
+      /* window controls */
       .window-button {
         width: 40px;
         height: 100%;
@@ -926,10 +937,21 @@
         cursor: pointer;
         padding: 0;
       }
-
-      .window-button svg {
-        width: 11px;
-        height: 11px;
+      .window-button .codicon {
+        color: var(--grayOut);
+        line-height: 1;
+      }
+      .window-button[aria-label="Minimize"] .codicon {
+        font-size: 17px;
+      }
+      .window-button[aria-label="Maximize"] .codicon {
+        font-size: 14px;
+      }
+      .window-button[aria-label="Restore"] .codicon {
+        font-size: 16px;
+      }
+      .window-button[aria-label="Close"] .codicon {
+        font-size: 14px;
       }
       #min-button:hover,
       #max-button:hover {
@@ -938,8 +960,9 @@
       #close-button:hover {
         background: var(--windowClose);
       }
-      #close-button:hover line {
-        stroke: #fff !important;
+      .window-button:hover .codicon,
+      #close-button:hover .codicon {
+        color: #fff;
       }
 
       button:focus,
@@ -1373,6 +1396,7 @@
       #tab-context-menu button,
       #note-context-menu button {
         display: flex;
+        flex: 0 0 26px;
         position: relative;
         background: none;
         color: var(--editorText);
@@ -1472,7 +1496,7 @@
         border: none;
         border-radius: 5px;
         background: none;
-        color: var(--editorText);
+        color: var(--grayOut);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1491,6 +1515,7 @@
       }
       #side-panel-close:hover {
         background: var(--color3);
+        color: var(--editorText);
       }
       #side-panel-drag-fill {
         position: absolute;
@@ -1758,7 +1783,7 @@
         flex: 1 1 auto;
         min-height: 0;
         overflow-y: auto;
-        padding: 0 0 115px 0;
+        padding: 0;
       }
       body.global-search-active #notes-list {
         display: none;
@@ -2029,6 +2054,13 @@
       #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.pinned:hover {
         background: var(--color3);
       }
+      .note-list-item.active-note {
+        background: color-mix(in srgb, var(--color3) 60%, transparent);
+        /* color: var(--highlight); */
+      }
+      #notes-list:not(:has(.note-list-item.dragging)) .note-list-item.active-note:hover {
+        background: var(--color3);
+      }
       .note-list-title {
         font-size: 14px;
         flex: 1 1 auto;
@@ -2120,7 +2152,7 @@
         margin: 0px 20px 5px 20px;
         flex-shrink: 0;
       }
-      #settings-menu button:not(.custom-select__arrow) {
+      #settings-menu button:not(.custom-select__arrow):not(.custom-select__trigger) {
         position: relative;
         justify-content: space-between;
         display: flex;
@@ -2135,9 +2167,6 @@
         height: 28px;
         line-height: 28px;
         padding: 0 20px;
-      }
-      #settings-menu .custom-select button {
-        padding: 0;
       }
       #settings-menu button:not(.custom-select button):hover {
         background: var(--color3);
@@ -2180,15 +2209,29 @@
         align-items: center;
         justify-content: center;
         border-radius: 5px;
+        color: var(--grayOut);
         margin: 0;
       }
       .size-change-btn:hover {
         background: var(--color3);
+        color: var(--editorText);
+      }
+      .size-change-btn.disabled {
+        opacity: 0.45;
+        cursor: default;
       }
       #tab-size-value,
       #font-size-value {
         color: var(--editorText);
       }
+      .settings-info {
+        color: var(--grayOut);
+        font-size: 12px;
+        padding: 0 20px;
+        margin: 5px 0 0 0;
+      }
+
+      /* custom dropdown menu */
       .custom-select-source {
         display: none !important;
       }
@@ -2199,14 +2242,12 @@
         width: 100%;
         background: var(--color2);
         color: var(--editorText);
-        padding: 0 5px;
-        border: solid 1px var(--color3);
-        border-radius: 5px;
+        padding: 0;
         overflow: visible;
         box-sizing: border-box;
       }
-      .custom-select:not(:has(input)):hover,
-      .custom-select:has(input):not(.is-open):hover {
+      .custom-select:not(:has(input)) .custom-select__trigger:hover,
+      .custom-select:has(input):not(.is-open) .custom-select__trigger:hover {
         background: var(--color3);
       }
       .custom-select__trigger {
@@ -2215,15 +2256,13 @@
         z-index: 0;
         display: block;
         box-sizing: border-box;
-        height: 28px;
-        min-height: 28px;
+        height: 100%;
         width: 100%;
         color: var(--editorText);
         font: inherit;
-        line-height: 28px;
-        padding: 0 22px 0 0;
-        border: none;
-        border-radius: 0;
+        padding: 0 27px 0 5px;
+        border: solid 1px var(--color3);
+        border-radius: 5px;
         overflow: hidden;
         white-space: nowrap;
         text-overflow: ellipsis;
@@ -2249,8 +2288,8 @@
         content: "\eab4";
         position: absolute;
         pointer-events: none;
-        top: 2px;
-        right: 2px;
+        top: 3px;
+        right: 3px;
         width: 22px;
         height: 22px;
         color: var(--editorText);
@@ -2357,24 +2396,17 @@
         max-height: 300px;
       }
       .custom-select__list::-webkit-scrollbar {
-        width: 12px;
+        width: 10px;
       }
       .custom-select__list::-webkit-scrollbar-track {
         background: transparent;
       }
       .custom-select__list::-webkit-scrollbar-thumb {
         background: var(--color3);
-        border-left: solid 2px var(--color2);
       }
       .custom-select__list::-webkit-scrollbar-button,
       .custom-select__list::-webkit-scrollbar-corner {
         display: none;
-      }
-      .settings-info {
-        color: var(--grayOut);
-        font-size: 12px;
-        padding: 0 20px;
-        margin: 5px 0 0 0;
       }
     </style>
   </head>
@@ -2442,20 +2474,13 @@
         <!-- window controls -->
         <div id="window-controls">
           <button class="window-button" id="min-button" aria-label="Minimize">
-            <svg viewBox="0 0 12.47 1">
-              <line x1="11.97" y1=".5" x2=".5" y2=".5" stroke="#fff" stroke-linecap="round" fill="none" />
-            </svg>
+            <span class="codicon codicon-chrome-minimize" aria-hidden="true"></span>
           </button>
           <button class="window-button" id="max-button" aria-label="Maximize">
-            <svg viewBox="0 0 12.47 12.47">
-              <rect x=".5" y=".5" width="11.47" height="11.47" stroke="#fff" fill="none" />
-            </svg>
+            <span class="codicon codicon-chrome-maximize" aria-hidden="true"></span>
           </button>
           <button class="window-button" id="close-button" aria-label="Close">
-            <svg viewBox="0 0 12.47 12.47">
-              <line x1="11.97" y1=".5" x2=".5" y2="11.97" stroke="#fff" stroke-linecap="round" fill="none" />
-              <line x1=".5" y1=".5" x2="11.97" y2="11.97" stroke="#fff" stroke-linecap="round" fill="none" />
-            </svg>
+            <span class="codicon codicon-chrome-close" aria-hidden="true"></span>
           </button>
         </div>
       </div>

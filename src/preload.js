@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   listNotes: () => ipcRenderer.invoke("notes:list"),
   refreshNotesIndex: () => ipcRenderer.invoke("notes:refresh-index"),
   onWindowFocus: (callback) => ipcRenderer.on("window-focus", (event, focused) => callback(focused)),
+  onWindowMaximizeState: (callback) => ipcRenderer.on("window-maximize-state", (event, maximized) => callback(maximized)),
   onAttemptCloseWindow: (callback) => ipcRenderer.on("attempt-close-window", callback),
 
   // file watch
@@ -81,6 +82,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   minimizeWindow: () => ipcRenderer.send("window:minimize"),
   toggleMaximizeWindow: () => ipcRenderer.send("window:toggleMaximize"),
+  isWindowMaximized: () => ipcRenderer.invoke("window:isMaximized"),
   closeWindow: () => ipcRenderer.send("window:close"),
 
   // printContent: (text) => ipcRenderer.send("print-content", text),

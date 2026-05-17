@@ -3798,17 +3798,32 @@ deviceShareCopy?.addEventListener("click", async () => {
 });
 
 // window controls
+const maxButton = document.getElementById("max-button");
+const maxButtonIcon = maxButton?.querySelector(".codicon");
+
+function updateMaximizeButtonIcon(isMaximized) {
+  if (!maxButton || !maxButtonIcon) return;
+  maxButtonIcon.classList.toggle("codicon-chrome-maximize", !isMaximized);
+  maxButtonIcon.classList.toggle("codicon-chrome-restore", Boolean(isMaximized));
+  const label = isMaximized ? "Restore" : "Maximize";
+  maxButton.setAttribute("aria-label", label);
+  maxButton.title = label;
+}
+
 document.getElementById("min-button").addEventListener("click", () => {
   window.electronAPI.minimizeWindow();
 });
 
-document.getElementById("max-button").addEventListener("click", () => {
+maxButton.addEventListener("click", () => {
   window.electronAPI.toggleMaximizeWindow();
 });
 
 document.getElementById("close-button").addEventListener("click", () => {
   attemptCloseWindow();
 });
+
+window.electronAPI.onWindowMaximizeState(updateMaximizeButtonIcon);
+window.electronAPI.isWindowMaximized?.().then(updateMaximizeButtonIcon);
 
 window.electronAPI.onAttemptCloseWindow(() => {
   attemptCloseWindow();
@@ -5338,6 +5353,7 @@ function switchTab(data) {
   currentFilePath = data.isNote ? `Note: ${data.name}` : data.path || data.name;
   updateMainMenuState();
   updateDeviceShareButtonState();
+  updateActiveNoteListItem();
 
   // restore selection, scroll position
   if (data.viewState) monacoEditor.restoreViewState(data.viewState);
@@ -5886,8 +5902,17 @@ async function renderNotesList({ scheduleSearch = true } = {}) {
     notesList.appendChild(item);
   }
 
+  updateActiveNoteListItem();
   updateGlobalSearchActionState();
   if (scheduleSearch && isGlobalSearchActive()) scheduleGlobalSearch();
+}
+
+function updateActiveNoteListItem() {
+  if (!notesList) return;
+  const activeNoteId = currentTab?.isNote && currentTab.noteId ? currentTab.noteId : null;
+  notesList.querySelectorAll(".note-list-item").forEach((item) => {
+    item.classList.toggle("active-note", Boolean(activeNoteId && item.dataset.noteId === activeNoteId));
+  });
 }
 
 function resizeGlobalSearchInput() {

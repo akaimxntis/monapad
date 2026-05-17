@@ -39,6 +39,18 @@ const MOBILE_SHARE_MAX_TEXT_BYTES = 2 * 1024 * 1024;
 const AUTOSAVE_MAX_ITEM_BYTES = 5 * 1024 * 1024;
 const AUTOSAVE_MAX_TOTAL_BYTES = 100 * 1024 * 1024;
 
+function sendWindowMaximizeState(window) {
+  if (!window || window.webContents.isDestroyed()) return;
+  window.webContents.send("window-maximize-state", window.isMaximized());
+}
+
+function bindWindowMaximizeState(window) {
+  window.on("maximize", () => sendWindowMaximizeState(window));
+  window.on("unmaximize", () => sendWindowMaximizeState(window));
+  window.on("enter-full-screen", () => sendWindowMaximizeState(window));
+  window.on("leave-full-screen", () => sendWindowMaximizeState(window));
+}
+
 fs.readdirSync(logDir).forEach((file) => {
   if (file.startsWith("main.log.old")) {
     const filePath = path.join(logDir, file);
@@ -70,6 +82,7 @@ function createWindow() {
   });
 
   mainWindow.loadFile(path.join(__dirname, "index.html"));
+  bindWindowMaximizeState(mainWindow);
 
   mainWindow.once("ready-to-show", () => {
     mainWindow.show();
@@ -110,6 +123,7 @@ function createWindow() {
 
   mainWindow.webContents.on("did-finish-load", () => {
     mainWindow.webContents.send("assign-window-id", mainWindow.id);
+    sendWindowMaximizeState(mainWindow);
   });
 }
 
@@ -148,6 +162,7 @@ function createNewWindow(parentWindow, position) {
   });
 
   win.loadFile(path.join(__dirname, "index.html"));
+  bindWindowMaximizeState(win);
 
   win.once("ready-to-show", () => {
     win.show();
@@ -187,6 +202,7 @@ function createNewWindow(parentWindow, position) {
 
   win.webContents.on("did-finish-load", () => {
     win.webContents.send("assign-window-id", win.id);
+    sendWindowMaximizeState(win);
   });
 
   return win;
@@ -1731,7 +1747,13 @@ ipcMain.on("window:toggleMaximize", (event) => {
   const window = BrowserWindow.fromWebContents(event.sender);
   if (window) {
     window.isMaximized() ? window.unmaximize() : window.maximize();
+    setImmediate(() => sendWindowMaximizeState(window));
   }
+});
+
+ipcMain.handle("window:isMaximized", (event) => {
+  const window = BrowserWindow.fromWebContents(event.sender);
+  return Boolean(window?.isMaximized());
 });
 
 // call window close from toolbar button
