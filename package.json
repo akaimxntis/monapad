@@ -252,7 +252,6 @@
   },
   "dependencies": {
     "@codingame/monaco-vscode-api": "^18.2.0",
-    "choices.js": "^11.1.0",
     "electron-log": "^5.4.1",
     "electron-store": "^8.1.0",
     "electron-updater": "^6.6.2",

@@ -103,7 +103,6 @@ Feel free to review the source code since it is 100% open sourced.
 - [Visual Studio Code](https://github.com/microsoft/vscode)
 - [i18next](https://github.com/i18next/i18next)
 - [font-list](https://github.com/oldj/node-font-list)
-- [Choices.js](https://github.com/Choices-js/Choices)
 - [Kuromoji.js](https://github.com/takuyaa/kuromoji.js/)
 - [qrcode](https://github.com/soldair/node-qrcode)
 

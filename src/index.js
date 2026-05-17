@@ -2,9 +2,7 @@ import * as monaco from "monaco-editor";
 import { StandaloneServices } from "monaco-editor/esm/vs/editor/standalone/browser/standaloneServices.js";
 import { INotificationService } from "monaco-editor/esm/vs/platform/notification/common/notification.js";
 import "monaco-editor/esm/vs/base/browser/ui/codicons/codicon/codicon.css";
-import Choices from "choices.js";
-import "choices.js/public/assets/styles/choices.min.css";
-import "./custom-choices.css";
+import { CustomSelect } from "./custom-select.js";
 import i18next from "i18next";
 import QRCode from "qrcode";
 
@@ -519,13 +517,15 @@ function applyUiLanguage(lang) {
 
 applyUiLanguage(savedLang);
 
-const langChoices = new Choices(langSwitcher, {
+const langDropdown = new CustomSelect(langSwitcher, {
   searchEnabled: false,
-  itemSelectText: "",
   position: "bottom",
+  onBeforeOpen() {
+    closeContextMenus({ focus: false });
+  },
 });
 
-langChoices.setChoiceByValue(savedLang);
+langDropdown.setChoiceByValue(savedLang);
 
 i18next
   .init({
@@ -689,7 +689,7 @@ function updateMainMenuState() {
 }
 
 langSwitcher.addEventListener("change", () => {
-  const newLang = langChoices.getValue(true);
+  const newLang = langDropdown.getValue(true);
 
   i18next.changeLanguage(newLang).then(async () => {
     applyUiLanguage(newLang);
@@ -2544,43 +2544,33 @@ monacoEditor.onKeyDown((e) => {
   });
 });
 
-// font choices
-const fontChoices = new Choices(fontFamilySelect, {
+// font dropdown
+const fontDropdown = new CustomSelect(fontFamilySelect, {
   searchEnabled: true,
-  itemSelectText: "",
+  combobox: true,
   shouldSort: false,
-  allowHTML: true,
   position: "bottom",
+  onBeforeOpen() {
+    closeContextMenus({ focus: false });
+  },
+  renderOption(choice) {
+    const preview = document.createElement("span");
+    preview.dataset.fontPreview = choice.value;
+    preview.textContent = choice.label;
+    if (loadedFontPreviewNames.has(choice.value)) {
+      preview.style.fontFamily = getFontPreviewFamily(choice.value);
+      preview.dataset.fontPreviewApplied = "true";
+    }
+    return preview;
+  },
 });
 let fontPreviewFrameId = null;
 let fontPreviewScrollTimer = null;
 let fontPreviewSearchTimer = null;
+const loadedFontPreviewNames = new Set();
 
-// do not close menu when input box is clicked
-fontChoices.input.element.addEventListener("mousedown", (e) => {
-  e.stopPropagation();
-});
-fontChoices.input.element.addEventListener("click", (e) => {
-  e.stopPropagation();
-});
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      case "'":
-        return "&#39;";
-      default:
-        return char;
-    }
-  });
+function getFontPreviewFamily(fontName) {
+  return `"${fontName.replace(/"/g, '\\"')}", "Figtree", sans-serif`;
 }
 
 // scroll to bottom of settings menu whenever langSwitcher dropdown is shown
@@ -2594,30 +2584,28 @@ function scrollToBottomOfSettingsMenu() {
 }
 
 // scroll to selected item on top of menu list
-function scrollToSelectedOption(choicesInstance) {
-  const container = choicesInstance.containerOuter.element;
-  container.querySelectorAll(".choices__item.is-highlighted").forEach((el) => el.classList.remove("is-highlighted"));
+function scrollToSelectedOption(selectInstance) {
+  const container = selectInstance.containerOuter.element;
+  container.querySelectorAll(".custom-select__item.is-highlighted").forEach((el) => el.classList.remove("is-highlighted"));
 
-  const selectedOption = container.querySelector(".choices__item.is-selected");
+  const selectedOption = container.querySelector(".custom-select__item.is-selected");
   if (selectedOption) {
-    selectedOption.scrollIntoView({
-      behavior: "auto",
-      block: "start",
-    });
+    const list = selectedOption.closest(".custom-select__list");
+    if (list) list.scrollTop = selectedOption.offsetTop;
     requestAnimationFrame(() => {
       selectedOption.classList.add("is-highlighted");
     });
   }
 }
 
-function getFontChoicesDropdown() {
-  return fontChoices.containerOuter.element.querySelector(".choices__list--dropdown");
+function getFontDropdown() {
+  return fontDropdown.containerOuter.element.querySelector(".custom-select__dropdown");
 }
 
 function applyVisibleFontPreviews() {
   fontPreviewFrameId = null;
 
-  const dropdown = getFontChoicesDropdown();
+  const dropdown = getFontDropdown();
   if (!dropdown || !dropdown.classList.contains("is-active")) return;
 
   const dropdownRect = dropdown.getBoundingClientRect();
@@ -2625,7 +2613,7 @@ function applyVisibleFontPreviews() {
 
   const previewSpans = dropdown.querySelectorAll("[data-font-preview]:not([data-font-preview-applied])");
   for (const span of previewSpans) {
-    const item = span.closest(".choices__item");
+    const item = span.closest(".custom-select__item");
     if (!item) continue;
 
     const itemRect = item.getBoundingClientRect();
@@ -2635,7 +2623,8 @@ function applyVisibleFontPreviews() {
     const fontName = span.dataset.fontPreview;
     if (!fontName) continue;
 
-    span.style.fontFamily = `"${fontName.replace(/"/g, '\\"')}", "Figtree", sans-serif`;
+    loadedFontPreviewNames.add(fontName);
+    span.style.fontFamily = getFontPreviewFamily(fontName);
     span.dataset.fontPreviewApplied = "true";
   }
 }
@@ -2648,19 +2637,9 @@ function scheduleVisibleFontPreviews() {
   });
 }
 
-function resetFontPreviewApplications() {
-  const dropdown = getFontChoicesDropdown();
-  if (!dropdown) return;
-
-  dropdown.querySelectorAll("[data-font-preview-applied]").forEach((span) => {
-    span.removeAttribute("data-font-preview-applied");
-    span.style.fontFamily = "";
-  });
-}
-
 function bindLazyFontPreviewEvents() {
-  const dropdown = getFontChoicesDropdown();
-  const dropdownList = dropdown?.querySelector(".choices__list");
+  const dropdown = getFontDropdown();
+  const dropdownList = dropdown?.querySelector(".custom-select__list");
   if (!dropdown || dropdown.dataset.lazyFontPreviewBound === "true") return;
 
   dropdown.dataset.lazyFontPreviewBound = "true";
@@ -2671,10 +2650,9 @@ function bindLazyFontPreviewEvents() {
     fontPreviewScrollTimer = setTimeout(scheduleVisibleFontPreviews, 80);
   });
 
-  fontChoices.input.element.addEventListener("input", () => {
+  fontDropdown.trigger.addEventListener("input", () => {
     clearTimeout(fontPreviewSearchTimer);
     fontPreviewSearchTimer = setTimeout(() => {
-      resetFontPreviewApplications();
       scheduleVisibleFontPreviews();
     }, 40);
   });
@@ -2683,17 +2661,10 @@ function bindLazyFontPreviewEvents() {
 // scroll fontFamilySelect to top of settingsMenu when its dropdown is not fully inside it
 function adjustDropdownScroll() {
   const scrollNow = () => {
-    const dropdown = document.querySelector(".font-select-row .choices__list--dropdown");
+    const dropdown = document.querySelector(".font-select-row .custom-select__dropdown");
     if (!dropdown || !fontSelectRow) return null;
 
-    const settingsRect = settingsMenu.getBoundingClientRect();
-    const dropdownRect = dropdown.getBoundingClientRect();
-
-    const overflowsBottom = dropdownRect.bottom > settingsRect.bottom;
-    const overflowsTop = dropdownRect.top < settingsRect.top;
-    if (!overflowsBottom && !overflowsTop) return null;
-
-    const scrollTargetY = fontSelectRow.offsetTop;
+    const scrollTargetY = Math.max(0, fontSelectRow.offsetTop - 5);
     settingsMenu.scrollTop = scrollTargetY;
     return scrollTargetY;
   };
@@ -2715,7 +2686,7 @@ function onDropdownShown(event) {
 
   // === Font Selector ===
   if (target === fontFamilySelect) {
-    scrollToSelectedOption(fontChoices);
+    scrollToSelectedOption(fontDropdown);
     bindLazyFontPreviewEvents();
 
     if (scrollLocked) {
@@ -2728,7 +2699,7 @@ function onDropdownShown(event) {
 
   // === Language Selector ===
   else if (target === langSwitcher) {
-    scrollToSelectedOption(langChoices);
+    scrollToSelectedOption(langDropdown);
 
     if (scrollLocked) {
       scrollAdjustQueue.push(scrollToBottomOfSettingsMenu);
@@ -2759,27 +2730,24 @@ window.electronAPI.getFonts().then((fonts) => {
 
   const sortedFonts = cleanedFonts.sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
 
-  // apply to choices by adding class
-  fontChoices.setChoices(
-    sortedFonts.map((fontName) => {
-      return {
-        value: fontName,
-        label: `<span data-font-preview="${escapeHtml(fontName)}">${escapeHtml(fontName)}</span>`,
-        html: true,
-      };
-    }),
+  // apply to custom select
+  fontDropdown.setChoices(
+    sortedFonts.map((fontName) => ({
+      value: fontName,
+      label: fontName,
+    })),
     "value",
     "label",
     true,
   );
 
-  fontChoices.setChoiceByValue(selectedFontFamily);
+  fontDropdown.setChoiceByValue(selectedFontFamily);
   applyFontToMonaco();
 });
 
 // apply font on change
 fontFamilySelect.addEventListener("change", () => {
-  selectedFontFamily = fontChoices.getValue(true);
+  selectedFontFamily = fontDropdown.getValue(true);
   localStorage.setItem("selectedFontFamily", selectedFontFamily);
   console.log(selectedFontFamily);
   applyFontToMonaco();
@@ -2840,7 +2808,7 @@ document.querySelector("#settings-menu .font .reset").addEventListener("click", 
   updatePersistentFontSize(16);
   selectedFontFamily = "Iosevka";
   localStorage.setItem("selectedFontFamily", selectedFontFamily);
-  fontChoices.setChoiceByValue(selectedFontFamily);
+  fontDropdown.setChoiceByValue(selectedFontFamily);
   applyFontToMonaco();
 });
 
@@ -3259,7 +3227,7 @@ window.addEventListener("mouseup", () => {
 
 // close menu & context menu on outside click
 document.addEventListener("mousedown", (e) => {
-  if (e.target.closest(".choices")) return;
+  if (e.target.closest(".custom-select")) return;
   if (e.target.closest("#menu-button, #side-panel-menu-button")) {
     closeContextMenus({ focus: false });
     return;
@@ -8763,8 +8731,8 @@ function isSettingsMenuOpen() {
 function closeSettingsMenu() {
   const wasOpen = isSettingsMenuOpen();
   settingsMenu.style.display = "none";
-  langChoices.hideDropdown();
-  fontChoices.hideDropdown();
+  langDropdown.hideDropdown();
+  fontDropdown.hideDropdown();
   if (wasOpen) monacoEditor?.focus();
 }
 
@@ -8862,8 +8830,8 @@ editor.addEventListener("click", () => {
   closeSettingsMenu();
 });
 settingsMenu.addEventListener("click", (e) => {
-  langChoices.hideDropdown();
-  fontChoices.hideDropdown();
+  langDropdown.hideDropdown();
+  fontDropdown.hideDropdown();
   // e.stopPropagation();
 });
 // prevent focus() from auto scrolling dropdown into view

@@ -2120,7 +2120,7 @@
         margin: 0px 20px 5px 20px;
         flex-shrink: 0;
       }
-      #settings-menu button {
+      #settings-menu button:not(.custom-select__arrow) {
         position: relative;
         justify-content: space-between;
         display: flex;
@@ -2136,7 +2136,10 @@
         line-height: 28px;
         padding: 0 20px;
       }
-      #settings-menu button:hover {
+      #settings-menu .custom-select button {
+        padding: 0;
+      }
+      #settings-menu button:not(.custom-select button):hover {
         background: var(--color3);
       }
       #settings-menu .row {
@@ -2146,8 +2149,13 @@
         padding: 0 20px;
         height: 28px;
         line-height: 28px;
-        margin-bottom: 5px;
         font-size: 14px;
+      }
+      #settings-menu .row.font-select-row {
+        margin-bottom: 5px;
+      }
+      #settings-menu .row:has(.custom-select) {
+        padding: 0 17px 0 15px;
       }
 
       #settings-menu .label {
@@ -2181,32 +2189,68 @@
       #font-size-value {
         color: var(--editorText);
       }
-      /* #langSwitcher, */
-      #font-family-select {
-        all: unset;
-        display: block;
+      .custom-select-source {
+        display: none !important;
+      }
+      .custom-select {
+        position: relative;
         height: 28px;
+        min-height: 28px;
         width: 100%;
         background: var(--color2);
         color: var(--editorText);
+        padding: 0 5px;
+        border: solid 1px var(--color3);
+        border-radius: 5px;
+        overflow: visible;
+        box-sizing: border-box;
+      }
+      .custom-select:not(:has(input)):hover,
+      .custom-select:has(input):not(.is-open):hover {
+        background: var(--color3);
+      }
+      .custom-select__trigger {
+        all: unset;
+        position: relative;
+        z-index: 0;
+        display: block;
+        box-sizing: border-box;
+        height: 28px;
+        min-height: 28px;
+        width: 100%;
+        color: var(--editorText);
         font: inherit;
-        appearance: none;
-        -webkit-appearance: none;
-        -moz-appearance: none;
+        line-height: 28px;
+        padding: 0 22px 0 0;
+        border: none;
+        border-radius: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
         cursor: pointer;
       }
-      #font-select-wrapper,
-      #lang-select-wrapper {
-        position: relative;
-        width: 100%;
+      .custom-select__input {
+        user-select: text;
       }
-      #font-select-wrapper::after,
-      #lang-select-wrapper::after {
+      .custom-select--combobox.is-open .custom-select__input {
+        background-color: var(--color1);
+        color: var(--editorText);
+        border-radius: 5px;
+        border: solid 1px var(--color1);
+        box-sizing: border-box;
+        padding: 0 24px 0 4px;
+        cursor: text;
+      }
+      .custom-select__input::placeholder {
+        color: var(--grayOut);
+      }
+      .custom-select::after {
+        border: none;
         content: "\eab4";
         position: absolute;
         pointer-events: none;
-        top: 3px;
-        right: 0px;
+        top: 2px;
+        right: 2px;
         width: 22px;
         height: 22px;
         color: var(--editorText);
@@ -2217,11 +2261,120 @@
         font-size: 16px;
         line-height: 1;
       }
+      .custom-select__arrow {
+        all: unset;
+        display: none;
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        width: 22px;
+        height: 22px;
+        cursor: pointer;
+        z-index: 2;
+        pointer-events: auto;
+      }
+      .custom-select--combobox.is-open::after {
+        content: none;
+      }
+      .custom-select--combobox.is-open .custom-select__arrow {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .custom-select--combobox.is-open .custom-select__arrow::after {
+        content: "\eab4";
+        color: var(--editorText);
+        font-family: codicon;
+        font-size: 16px;
+        line-height: 1;
+        transform: rotate(180deg);
+      }
+      .font-select-row .custom-select.is-open {
+        padding: 0;
+        border: solid 1px transparent;
+      }
+      .custom-select.is-open::after {
+        transform: rotate(180deg);
+      }
+      .custom-select__dropdown {
+        display: none;
+        z-index: 20;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
+        background-color: var(--color2);
+        color: var(--editorText);
+        padding: 0;
+        border: solid 1px var(--color3);
+        border-radius: 5px;
+        box-sizing: border-box;
+        margin-top: 1px;
+        overflow: hidden;
+        word-break: break-all;
+      }
+      .custom-select__dropdown.is-active {
+        display: block;
+      }
+      .custom-select.is-open .custom-select__dropdown {
+        border: solid 1px var(--color3);
+        border-radius: 5px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.7);
+      }
+      .custom-select__list {
+        position: relative;
+        max-height: 300px;
+        overflow: auto;
+        -webkit-overflow-scrolling: touch;
+        will-change: scroll-position;
+      }
+      .custom-select__item,
+      .custom-select__notice {
+        box-sizing: border-box;
+        height: 28px;
+        line-height: 28px;
+        padding: 0 5px;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .custom-select__item {
+        cursor: pointer;
+      }
+      .custom-select__notice {
+        color: var(--grayOut);
+        cursor: default;
+      }
+      .custom-select__item.is-highlighted {
+        background-color: var(--color3);
+      }
+      .font-select-row .custom-select.is-open .custom-select__dropdown {
+        height: calc(100vh - (36px + 28px + 25px + 10px));
+        max-height: 300px;
+      }
+      .font-select-row .custom-select__list {
+        height: 100%;
+        max-height: 300px;
+      }
+      .custom-select__list::-webkit-scrollbar {
+        width: 12px;
+      }
+      .custom-select__list::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .custom-select__list::-webkit-scrollbar-thumb {
+        background: var(--color3);
+        border-left: solid 2px var(--color2);
+      }
+      .custom-select__list::-webkit-scrollbar-button,
+      .custom-select__list::-webkit-scrollbar-corner {
+        display: none;
+      }
       .settings-info {
         color: var(--grayOut);
         font-size: 12px;
         padding: 0 20px;
-        margin: 0;
+        margin: 5px 0 0 0;
       }
     </style>
   </head>
