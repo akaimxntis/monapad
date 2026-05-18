@@ -134,6 +134,7 @@
     "statusBar": "Barra de status",
     "kuromoji": "Kuromoji",
     "kuromojiTooltip": "Segmentação avançada de palavras em japonês usando Kuromoji.js",
+    "defaultNewTabNote": "Usar notas por padrão",
     "tabSize": "Tabulação",
     "language": "Idioma",
     "langDescription": "Contribua com traduções <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">aqui</a>.",
@@ -145,16 +146,16 @@
   "modal": {
     "fileDrop": "Abrir com Monapad",
     "saveChanges": "Salvar alterações em \"{{name}}\"?",
-    "confirmSave": "Salvar",
-    "dontSave": "Não salvar",
-    "cancel": "Cancelar",
+    "confirmSave": "<span class=\"modal-underline\">S</span>alvar",
+    "dontSave": "<span class=\"modal-underline\">N</span>ão Salvar",
+    "cancel": "<span class=\"modal-underline\">C</span>ancelar",
     "confirmSaveWindow": "Deseja salvar as alterações?",
-    "saveAll": "Salvar tudo e sair",
-    "discardAll": "Descartar tudo e sair",
+    "saveAll": "<span class=\"modal-underline\">S</span>alvar tudo e Sair",
+    "discardAll": "<span class=\"modal-underline\">D</span>escartar e Sair",
     "description": "Editor de texto gratuito e de código aberto que usa o mesmo Monaco Editor do Visual Studio Code, criado por Sheeta.",
     "discordServer": "Servidor do Discord",
     "website": "Site",
     "creator": "Criador",
-    "disclaimer": "Aviso legal"
+    "disclaimer": "Aviso Legal"
   }
 }
