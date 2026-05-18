@@ -2,6 +2,9 @@
   "file": {
     "untitled": "Sem título"
   },
+  "note": {
+    "defaultTitle": "Nova Nota"
+  },
   "statusBar": {
     "line": "Lin",
     "col": "Col",
