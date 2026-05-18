@@ -2,6 +2,9 @@
   "file": {
     "untitled": "無題"
   },
+  "note": {
+    "defaultTitle": "新規ノート"
+  },
   "statusBar": {
     "line": "行",
     "col": "列",
@@ -103,6 +106,7 @@
     "statusBar": "ステータスバー",
     "kuromoji": "Kuromoji",
     "kuromojiTooltip": "Kuromoji.js を使用した高度な日本語分節化",
+    "defaultNewTabNote": "ノートをデフォルトで使用",
     "tabSize": "インデント幅",
     "language": "言語",
     "langDescription": "翻訳の貢献は<a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">こちら</a>。",

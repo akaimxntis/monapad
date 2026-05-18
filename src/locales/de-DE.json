@@ -2,6 +2,9 @@
   "file": {
     "untitled": "Unbenannt"
   },
+  "note": {
+    "defaultTitle": "Neue Notiz"
+  },
   "statusBar": {
     "line": "Ze",
     "col": "Sp",
@@ -103,6 +106,7 @@
     "statusBar": "Statusleiste",
     "kuromoji": "Kuromoji",
     "kuromojiTooltip": "Erweiterte japanische Wortsegmentierung mit Kuromoji.js",
+    "defaultNewTabNote": "Notizen standardmäßig verwenden",
     "tabSize": "Tabulatorgröße",
     "language": "Sprache",
     "langDescription": "Übersetzungen beitragen <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">hier</a>.",

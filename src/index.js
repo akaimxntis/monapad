@@ -167,8 +167,15 @@ const defaultSettings = {
   folding: true,
   statusBarVisible: true,
   kuromojiEnabled: false,
+  defaultNewTabType: "untitled",
 };
-const settings = JSON.parse(localStorage.getItem("editorSettings")) || defaultSettings;
+let storedSettings = {};
+try {
+  storedSettings = JSON.parse(localStorage.getItem("editorSettings") || "{}") || {};
+} catch {
+  storedSettings = {};
+}
+const settings = { ...defaultSettings, ...storedSettings };
 let selectedFontFamily = localStorage.getItem("selectedFontFamily") || "Iosevka";
 let monacoEditor = null;
 const WRAP_MEASURE_OPTIONS = {
@@ -445,9 +452,11 @@ window.electronAPI.onLoadTabData(async (receivedTabData) => {
   }
 
   // remove existing initial tab
-  if (tabData.length === 1 && !tabData[0].isPinned && !tabData[0].content.trim() && !tabData[0].path) {
+  if (getReusableEmptyTab({ includeNotes: true }) === tabData[0]) {
     const defaultTab = tabData[0];
+    await prepareReusableEmptyTabForReplacement(defaultTab);
     tabs.removeChild(defaultTab.element);
+    defaultTab.model?.dispose();
     tabData = [];
   }
 
@@ -651,6 +660,7 @@ function updateMenuLabels() {
   document.querySelector("#toggleStatusBar span").textContent = i18next.t("settings.statusBar");
   document.querySelector("#toggleKuromoji span").textContent = i18next.t("settings.kuromoji");
   document.querySelector("#toggleKuromoji").title = i18next.t("settings.kuromojiTooltip");
+  document.querySelector("#default-new-tab-note span").textContent = i18next.t("settings.defaultNewTabNote");
   document.querySelector("#line-highlight span").textContent = i18next.t("settings.highlightLine");
   document.querySelector("#line-num span").textContent = i18next.t("settings.lineNumbers");
   document.querySelector("#minimap span").textContent = i18next.t("settings.displayMinimap");
@@ -664,6 +674,7 @@ function updateMenuLabels() {
   document.getElementById("customThemeDescription").innerHTML = i18next.t("settings.customThemeDescription");
   document.querySelector(".font .reset").title = i18next.t("settings.resetTooltip");
   document.querySelector("#settingsLayout .reset").title = i18next.t("settings.resetTooltip");
+  updateNewTabShortcutLabels();
 
   // modal
   document.querySelector("#file-drop p").textContent = i18next.t("modal.fileDrop");
@@ -1730,7 +1741,7 @@ function createAutosaveId() {
 
 function getTabAutosaveKey(tab) {
   if (!tab) return null;
-  if (tab.isNote) return tab.noteId ? `note:${tab.noteId}` : null;
+  if (tab.isNote) return tab.noteId ? `note:${tab.noteId}` : tab.draftId ? `pending-note:${tab.draftId}` : null;
   if (tab.path) return `file:${tab.path}`;
   return tab.draftId ? `draft:${tab.draftId}` : null;
 }
@@ -1743,12 +1754,33 @@ function truncateNoteTitle(title) {
   return `${value.slice(0, NOTE_TITLE_MAX_LENGTH)}...`;
 }
 
+function getDefaultNoteTitle() {
+  return i18next.t("note.defaultTitle", { defaultValue: i18next.t("sidePanel.newNote", { defaultValue: "New Note" }) });
+}
+
+function getDefaultNewTabType({ invert = false } = {}) {
+  const baseType = settings.defaultNewTabType === "note" ? "note" : "untitled";
+  if (!invert) return baseType;
+  return baseType === "note" ? "untitled" : "note";
+}
+
+function isDefaultNewTabNote() {
+  return getDefaultNewTabType() === "note";
+}
+
+function updateNewTabShortcutLabels() {
+  const newTabShortcut = document.querySelector("#newTabBtn .shortcut");
+  const newNoteShortcut = document.querySelector("#newNoteBtn .shortcut");
+  if (newTabShortcut) newTabShortcut.textContent = isDefaultNewTabNote() ? "Ctrl + Alt + T" : "Ctrl + T";
+  if (newNoteShortcut) newNoteShortcut.textContent = isDefaultNewTabNote() ? "Ctrl + T" : "Ctrl + Alt + T";
+}
+
 function getNoteTitleFromContent(content) {
   const firstTextLine = String(content || "")
     .split(/\r\n|\r|\n/)
     .map((line) => line.trim())
     .find(Boolean);
-  return truncateNoteTitle(firstTextLine || "New Note");
+  return truncateNoteTitle(firstTextLine || getDefaultNoteTitle());
 }
 
 function formatNoteUpdatedAt(updatedAt) {
@@ -1876,8 +1908,57 @@ function getFileSaveOptions(tab, { preserveBom = true } = {}) {
 }
 
 async function writeNoteTab(tab, content = null, force = false) {
-  if (!tab?.isNote || !tab.noteId) return false;
+  if (!tab?.isNote) return false;
   const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
+
+  if (!tab.noteId) {
+    if (tab._pendingNoteCreatePromise) return await tab._pendingNoteCreatePromise;
+
+    if (!nextContent.trim()) {
+      tab.content = nextContent;
+      tab.originalContent = "";
+      tab.isFileSaved = true;
+      tab.noteDirty = false;
+      updateNoteTabTitle(tab, nextContent);
+      return true;
+    }
+
+    tab._pendingNoteCreatePromise = (async () => {
+      updateNoteTabTitle(tab, nextContent);
+      const result = await window.electronAPI.createNote({
+        content: nextContent,
+        title: tab.noteTitle || getNoteTitleFromContent(nextContent),
+      });
+      if (!result?.success) return false;
+
+      applyNoteDataToTab(tab, { ...result, content: nextContent }, nextContent, { preview: tab.isNotePreview });
+      const liveContent = tab.model?.getValue() ?? tab.content ?? nextContent;
+      if (liveContent !== nextContent) {
+        tab.content = liveContent;
+        tab.noteDirty = true;
+        updateNoteTabTitle(tab, liveContent);
+        scheduleTabAutosave(tab, liveContent);
+      }
+      if (tab === currentTab) {
+        currentFilePath = `Note: ${tab.name}`;
+        updateStatusBar();
+      }
+      if (!tab.isNotePreview) updateRecentNote(tab.noteId);
+      savePinnedTabsState();
+      renderNotesList();
+      return true;
+    })();
+
+    try {
+      return await tab._pendingNoteCreatePromise;
+    } catch (error) {
+      console.warn("Failed to create note:", error);
+      return false;
+    } finally {
+      tab._pendingNoteCreatePromise = null;
+    }
+  }
+
   if (!force && !tab.noteDirty && nextContent === tab.originalContent) return true;
 
   updateNoteTabTitle(tab, nextContent);
@@ -1910,8 +1991,9 @@ async function writeNoteTab(tab, content = null, force = false) {
 }
 
 async function deleteNoteTabStorage(tab) {
-  if (!tab?.isNote || !tab.noteId) return;
+  if (!tab?.isNote) return;
   clearAutosaveTimer(tab);
+  if (!tab.noteId) return;
   try {
     await window.electronAPI.deleteNote(tab.noteId);
     renderNotesList();
@@ -1930,13 +2012,35 @@ function sortNotesForPanel(notes = []) {
   });
 }
 
-function getReusableEmptyUntitledTab() {
+function getReusableEmptyTab({ includeNotes = false } = {}) {
   if (tabData.length !== 1) return null;
   const tab = tabData[0];
-  if (tab.path || tab.isNote || tab.isWarned || tab.isPinned) return null;
+  if (tab.path || tab.isWarned || tab.isPinned) return null;
+  if (tab.isNote && !includeNotes) return null;
   const content =
     monacoEditor && tab === currentTab ? monacoEditor.getValue() : (tab.model?.getValue() ?? tab.content ?? "");
   return content.trim() ? null : tab;
+}
+
+async function prepareReusableEmptyTabForReplacement(tab) {
+  if (!tab) return;
+  if (tab.isNote) {
+    await deleteNoteTabStorage(tab);
+  } else {
+    await deleteTabAutosave(tab);
+  }
+
+  tab.isNote = false;
+  tab.isNotePreview = false;
+  tab.noteId = null;
+  tab.notePath = null;
+  tab.noteTitle = null;
+  tab.noteCreatedAt = null;
+  tab.noteUpdatedAt = null;
+  tab.noteDirty = false;
+  tab.draftId = null;
+  tab.element?.classList.remove("note", "preview");
+  updateActiveNoteListItem();
 }
 
 function setNoteTabPreview(tab, preview) {
@@ -1980,6 +2084,32 @@ function applyNoteDataToTab(tab, note, content, options = {}) {
   updateNoteTabTitle(tab, content);
 }
 
+function applyPendingNoteDataToTab(tab, content = "", options = {}) {
+  const title = getNoteTitleFromContent(content);
+  tab.isNote = true;
+  tab.noteId = null;
+  tab.notePath = null;
+  tab.noteTitle = title;
+  tab.noteCreatedAt = null;
+  tab.noteUpdatedAt = null;
+  tab.noteDirty = Boolean(String(content || "").trim());
+  if (!tab.draftId) tab.draftId = createAutosaveId();
+  tab.path = null;
+  tab.name = title;
+  tab.content = content;
+  tab.originalContent = "";
+  tab.isFileSaved = true;
+  tab.isWarned = false;
+  tab.isMarkdown = false;
+  tab._lastExternalContent = null;
+  tab.element.classList.add("note");
+  setNoteTabPreview(tab, Boolean(options.preview));
+  tab.element.querySelector(".name")?.classList.remove("warn");
+  tab.element.querySelector(".close")?.classList.remove("show-unsaved");
+  reloadButton(tab, null, "remove");
+  updateNoteTabTitle(tab, content);
+}
+
 function clearAutosaveTimer(tab) {
   const key = getTabAutosaveKey(tab);
   if (!key) return;
@@ -1996,7 +2126,8 @@ function shouldAutosaveTab(tab, content = null) {
   if (!tab || tab._autosaveDisabled) return false;
   const nextContent = content ?? tab.model?.getValue() ?? tab.content ?? "";
   if (tab.isNote) {
-    return Boolean(tab.noteId) && (tab.noteDirty || nextContent !== tab.originalContent);
+    if (!nextContent.trim()) return false;
+    return !tab.noteId || tab.noteDirty || nextContent !== tab.originalContent;
   }
   if (!nextContent.trim()) return false;
   if (!hasUnsavedChanges(tab, nextContent)) return false;
@@ -2123,8 +2254,9 @@ async function restoreAutosaveDrafts() {
     const drafts = await window.electronAPI.listAutosaveDrafts({ ownerId });
     if (!Array.isArray(drafts) || drafts.length === 0) return;
 
-    if (tabData.length === 1 && !tabData[0].isPinned && !tabData[0].path && !tabData[0].model?.getValue()?.trim()) {
+    if (getReusableEmptyTab({ includeNotes: true }) === tabData[0]) {
       const emptyTab = tabData[0];
+      await prepareReusableEmptyTabForReplacement(emptyTab);
       tabs.removeChild(emptyTab.element);
       emptyTab.model?.dispose();
       tabData = [];
@@ -2424,8 +2556,7 @@ async function restorePinnedTabs() {
   const entries = await getPinnedTabEntries();
   if (entries.length === 0) return;
 
-  const emptyInitialTab =
-    tabData.length === 1 && !tabData[0].path && !tabData[0].isNote && !tabData[0].model?.getValue()?.trim();
+  const emptyInitialTab = Boolean(getReusableEmptyTab({ includeNotes: true }));
   const initialEmptyTab = emptyInitialTab ? tabData[0] : null;
 
   for (const entry of entries) {
@@ -2452,9 +2583,9 @@ async function restorePinnedTabs() {
     tabData.includes(initialEmptyTab) &&
     !initialEmptyTab.isPinned &&
     !initialEmptyTab.path &&
-    !initialEmptyTab.isNote &&
     !initialEmptyTab.model?.getValue()?.trim()
   ) {
+    await prepareReusableEmptyTabForReplacement(initialEmptyTab);
     tabs.removeChild(initialEmptyTab.element);
     initialEmptyTab.model?.dispose();
     tabData = tabData.filter((tab) => tab !== initialEmptyTab);
@@ -2488,6 +2619,7 @@ monacoEditor.onDidChangeModelContent(() => {
 
   if (active.isNotePreview) keepOpenNoteTab(active);
   syncTabSaveState(active, currentContent);
+  if (active.isNote && !active.noteId && currentContent.trim()) writeNoteTab(active, currentContent, true);
   scheduleTabAutosave(active, currentContent);
 
   updateStatusBar();
@@ -2882,6 +3014,10 @@ function applySettings() {
   document.querySelector("#toggleKuromoji .checkmark").style.display = settings.kuromojiEnabled
     ? "inline-flex"
     : "none";
+  document.querySelector("#default-new-tab-note .checkmark").style.display = isDefaultNewTabNote()
+    ? "inline-flex"
+    : "none";
+  updateNewTabShortcutLabels();
 
   // status bar visibility
   const statusBar = document.getElementById("status-bar");
@@ -2926,6 +3062,11 @@ document.getElementById("toggleStatusBar").onclick = () => toggleSetting("status
 document.getElementById("toggleKuromoji").onclick = () => {
   toggleSetting("kuromojiEnabled");
   setKuromojiEnabled(settings.kuromojiEnabled);
+};
+document.getElementById("default-new-tab-note").onclick = () => {
+  settings.defaultNewTabType = isDefaultNewTabNote() ? "untitled" : "note";
+  localStorage.setItem("editorSettings", JSON.stringify(settings));
+  applySettings();
 };
 
 // editor settings reset button
@@ -3018,7 +3159,7 @@ window.triggerShowCommands = function () {
 document.getElementById("triggerShowCommandsBtn").addEventListener("click", triggerShowCommands);
 
 // initial tab create
-createTab();
+createDefaultEmptyTab({ switchTo: false });
 switchTab(tabData[0]);
 setTimeout(() => monacoEditor?.focus(), 0);
 
@@ -3831,18 +3972,12 @@ window.electronAPI.onAttemptCloseWindow(() => {
 
 // add tab (+) button
 addTabButton.onclick = async (e) => {
-  if (e.shiftKey) {
-    await createNewNote();
-    return;
-  }
-  createTab();
-  switchTab(tabData.at(-1));
+  createDefaultEmptyTab({ invert: e.shiftKey });
 };
 // new tab button
 newTabBtn.addEventListener("click", (e) => {
   e.preventDefault();
-  createTab();
-  switchTab(tabData.at(-1));
+  createDefaultEmptyTab();
 });
 newNoteBtn.addEventListener("click", async (e) => {
   e.preventDefault();
@@ -4489,7 +4624,7 @@ function removeTabAndAdjustUI(targetTabData) {
     setTimeout(() => monacoEditor?.focus(), 0);
   } else {
     currentTab = null;
-    createTab();
+    createDefaultEmptyTab({ switchTo: false });
     fixedTabsWidth = null;
     tabs.style.maxWidth = "";
     switchTab(tabData[0]);
@@ -4660,11 +4795,38 @@ function createTab(name, content = "", path = null, insertIndex = null, options 
   return data;
 }
 
+function createUntitledTab(options = {}) {
+  const { insertIndex = null, switchTo = true } = options;
+  const tab = createTab(null, "", null, insertIndex);
+  if (switchTo) switchTab(tab);
+  return tab;
+}
+
+function createPendingNoteTab(content = "", insertIndex = null, options = {}) {
+  const tab = createTab(getNoteTitleFromContent(content), content, null, insertIndex);
+  applyPendingNoteDataToTab(tab, content, options);
+  return tab;
+}
+
+function createEmptyTabByType(type, options = {}) {
+  const { insertIndex = null, switchTo = true } = options;
+  const tab =
+    type === "note"
+      ? createPendingNoteTab("", insertIndex, { preview: false })
+      : createUntitledTab({ insertIndex, switchTo: false });
+  if (tab && switchTo) switchTab(tab);
+  return tab;
+}
+
+function createDefaultEmptyTab(options = {}) {
+  return createEmptyTabByType(getDefaultNewTabType({ invert: Boolean(options.invert) }), options);
+}
+
 async function createNoteTab(content = "", insertIndex = null, existingNote = null, options = {}) {
   const title = existingNote?.meta?.title || getNoteTitleFromContent(content);
   let note = existingNote;
 
-  if (!note) {
+  if (!note && content.trim()) {
     note = await window.electronAPI.createNote({ content, title });
     if (!note?.success) {
       console.error("Failed to create note:", note?.error);
@@ -4672,21 +4834,29 @@ async function createNoteTab(content = "", insertIndex = null, existingNote = nu
     }
   }
 
-  const noteContent = typeof note.content === "string" ? note.content : content;
-  const reusableTab = getReusableEmptyUntitledTab();
+  const noteContent = typeof note?.content === "string" ? note.content : content;
+  const reusableTab = getReusableEmptyTab({ includeNotes: true });
   if (reusableTab) {
-    const previousDraftId = reusableTab.draftId;
-    clearAutosaveTimer(reusableTab);
-    if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
+    await prepareReusableEmptyTabForReplacement(reusableTab);
     reusableTab._ignoreUnsavedCheck = true;
     reusableTab.model.setValue(noteContent);
-    applyNoteDataToTab(reusableTab, note, noteContent, options);
+    if (note) {
+      applyNoteDataToTab(reusableTab, note, noteContent, options);
+    } else {
+      applyPendingNoteDataToTab(reusableTab, noteContent, options);
+    }
     if (reusableTab === currentTab) {
       currentFilePath = `Note: ${reusableTab.name}`;
       updateStatusBar();
     }
     renderNotesList();
     return reusableTab;
+  }
+
+  if (!note) {
+    const data = createPendingNoteTab(noteContent, insertIndex, options);
+    renderNotesList();
+    return data;
   }
 
   const data = createTab(title, noteContent, null, insertIndex);
@@ -4699,7 +4869,7 @@ async function createNewNote() {
   const data = await createNoteTab("", null, null, { preview: false });
   if (data) {
     switchTab(data);
-    updateRecentNote(data.noteId);
+    if (data.noteId) updateRecentNote(data.noteId);
   }
 }
 
@@ -4708,6 +4878,28 @@ async function saveAsNote() {
   if (!active || active.isNote || !monacoEditor) return false;
 
   const content = monacoEditor.getValue();
+  if (!content.trim()) {
+    if (!active.path && !active.isNote) {
+      const previousDraftId = active.draftId;
+      clearAutosaveTimer(active);
+      applyPendingNoteDataToTab(active, content, { preview: false });
+      if (previousDraftId) await window.electronAPI.deleteAutosaveDraft(previousDraftId);
+      updateMainMenuState();
+      updateStatusBar();
+      await renderNotesList();
+      showMessage("file-saved");
+      return true;
+    }
+
+    const newTab = await createNoteTab("", null, null, { preview: false });
+    if (newTab) {
+      switchTab(newTab);
+      showMessage("file-saved");
+      return true;
+    }
+    return false;
+  }
+
   const note = await window.electronAPI.createNote({ content, title: getNoteTitleFromContent(content) });
   if (!note?.success) {
     console.error("Failed to save as note:", note?.error);
@@ -4790,7 +4982,7 @@ async function attemptCloseTab(data) {
           setTimeout(() => monacoEditor?.focus(), 0);
         } else {
           currentTab = null;
-          createTab();
+          createDefaultEmptyTab({ switchTo: false });
           fixedTabsWidth = null;
           tabs.style.maxWidth = "";
           switchTab(tabData[0]);
@@ -4851,7 +5043,7 @@ async function attemptCloseTab(data) {
             setTimeout(() => monacoEditor?.focus(), 0);
           } else {
             currentTab = null;
-            createTab();
+            createDefaultEmptyTab({ switchTo: false });
 
             // reset max width when last tab is closed
             fixedTabsWidth = null;
@@ -4965,7 +5157,7 @@ async function attemptCloseTab(data) {
         setTimeout(() => monacoEditor?.focus(), 0);
       } else {
         currentTab = null;
-        createTab();
+        createDefaultEmptyTab({ switchTo: false });
 
         // reset max width when last tab is closed
         fixedTabsWidth = null;
@@ -5647,9 +5839,8 @@ async function loadFileByPath(filePath, insertIndex = null, options = {}) {
 
   if (tabData.length === 1) {
     const singleTab = tabData[0];
-    const currentContent = monacoEditor ? monacoEditor.getValue() : "";
-    if (!singleTab.isPinned && !singleTab.content.trim() && !currentContent.trim()) {
-      await deleteTabAutosave(singleTab);
+    if (getReusableEmptyTab({ includeNotes: true }) === singleTab) {
+      await prepareReusableEmptyTabForReplacement(singleTab);
       singleTab.name = fileName;
       singleTab.path = filePath;
       applyFileEncodingInfo(singleTab, fileInfo);
@@ -6348,8 +6539,9 @@ async function refreshNotesListNow() {
     globalSearchTimer = null;
   }
   const dirtyNoteTabs = tabData.filter((tab) => {
-    if (!tab?.isNote || !tab.noteId) return false;
+    if (!tab?.isNote) return false;
     const content = tab.model?.getValue() ?? tab.content ?? "";
+    if (!tab.noteId) return Boolean(content.trim());
     return tab.noteDirty || content !== tab.originalContent;
   });
   for (const tab of dirtyNoteTabs) {
@@ -7282,9 +7474,11 @@ async function openTabPayloadInCurrentWindow(payload, placement = { index: null,
     return existingTab;
   }
 
-  if (tabData.length === 1 && !tabData[0].isPinned && !tabData[0].content.trim() && !tabData[0].path) {
+  if (getReusableEmptyTab({ includeNotes: true }) === tabData[0]) {
     const defaultTab = tabData[0];
+    await prepareReusableEmptyTabForReplacement(defaultTab);
     tabs.removeChild(defaultTab.element);
+    defaultTab.model?.dispose();
     tabData = [];
   }
 
@@ -7426,7 +7620,7 @@ async function getNoteTabPayload(noteId) {
 }
 
 async function createNoteTabFromPayload(payload, insertIndex = null, placement = null) {
-  if (!payload?.noteId) return null;
+  if (!payload?.noteId) return createNoteTab(payload?.content || "", insertIndex, null, { preview: false });
   const existingTab = tabData.find((tab) => tab.isNote && tab.noteId === payload.noteId);
   const pinnedCount = getPinnedTabCount();
   const adjustedPlacement =
@@ -8116,7 +8310,7 @@ async function populateRecentMenu() {
 
     if (entry.type === "note") {
       const note = notesById.get(entry.noteId);
-      const title = truncateNoteTitle(note?.title || "New Note");
+      const title = truncateNoteTitle(note?.title || getDefaultNoteTitle());
       button.className = "recent-note-button";
       span.textContent = title;
       button.title = title;
@@ -8921,7 +9115,7 @@ window.addEventListener("keydown", async (e) => {
   if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === "KeyT") {
     if (externalCancelDragging) externalCancelDragging();
     e.preventDefault();
-    await createNewNote();
+    createDefaultEmptyTab({ invert: true });
   }
   // Ctrl + Shift + T
   else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === "KeyT") {
@@ -8933,8 +9127,7 @@ window.addEventListener("keydown", async (e) => {
   else if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === "KeyT") {
     if (externalCancelDragging) externalCancelDragging();
     e.preventDefault();
-    createTab();
-    switchTab(tabData.at(-1));
+    createDefaultEmptyTab();
   }
   // Ctrl + N
   if ((e.ctrlKey || e.metaKey) && e.code === "KeyN") {
