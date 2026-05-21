@@ -6,7 +6,7 @@
     "defaultTitle": "Nova Nota"
   },
   "statusBar": {
-    "line": "Lin",
+    "line": "Ln",
     "col": "Col",
     "selection": "({{count}} selecionado(s))",
     "encodingTooltip": "Este editor oferece suporte apenas a UTF-8.\nSe quiser usar outras codificações, converta o arquivo para UTF-8 antes de abri-lo.",
@@ -164,7 +164,7 @@
     "layout": "Editor",
     "highlightLine": "Realce da linha",
     "lineNumbers": "Números de linha",
-    "folding": "Dobrar código",
+    "folding": "Dobramento de código",
     "displayMinimap": "Minimapa",
     "syntaxHighlight": "Realce de sintaxe",
     "statusBar": "Barra de status",
