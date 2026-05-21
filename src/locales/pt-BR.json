@@ -15,7 +15,15 @@
     "invalidEncodingTooltip": "Este arquivo não é um UTF-8 válido, então alguns caracteres podem ter sido substituídos ao abrir.\nAo salvar, o arquivo será gravado como UTF-8.",
     "chordFirst": "({{first}}) foi pressionado.\nAguardando a segunda tecla do atalho...",
     "chordNext": "({{keys}}) foi pressionado.\nAguardando a próxima tecla do atalho...",
-    "chordMissing": "A combinação de teclas ({{keys}}) não é um comando."
+    "chordMissing": "A combinação de teclas ({{keys}}) não é um comando.",
+    "saved": "Salvo",
+    "modified": "Modificado",
+    "saving": "Salvando",
+    "backupSaved": "Backup atualizado",
+    "backupPending": "Backup pendente",
+    "backupMissing": "Backup desatualizado",
+    "externalModified": "Desatualizado",
+    "fileNotFound": "Arquivo não encontrado"
   },
   "menu": {
     "new": "Novo",
@@ -31,22 +39,40 @@
     "replace": "Substituir",
     "goToLine": "Ir para linha",
     "goToSymbol": "Ir para título",
+    "quickOpen": "Abertura rápida",
     "showCommands": "Lista de comandos",
     "print": "Imprimir",
     "settings": "Configurações",
     "notes": "Notas",
     "sidePanel": "Painel lateral",
+    "sidePanelDragHint": "Arraste para a direita para mostrar o painel lateral",
     "theme": "Temas",
     "about": "Sobre",
     "onyx": "Ônix",
     "dark": "Escuro",
     "ash": "Cinza"
   },
+  "monaco": {
+    "actions": {
+      "toggleSubtext": "Alternar subtexto",
+      "keepOpen": "Manter aberta",
+      "toggleTabPin": "Fixar/desafixar aba",
+      "toggleHeading": "Alternar título {{level}}",
+      "quickOpen": "Abertura rápida",
+      "showCommands": "Lista de comandos"
+    },
+    "quickOpen": {
+      "placeholder": "Pesquisar arquivos e notas pelo nome",
+      "noResults": "Nenhum arquivo ou nota encontrado",
+      "notes": "Notas"
+    }
+  },
   "message": {
     "saved": "Salvo",
     "fileAlreadyOpened": "Arquivo já aberto!",
     "fileUpdated": "Arquivo recarregado",
     "fileModified": "Arquivo modificado externamente!",
+    "fileNotFound": "Arquivo não encontrado",
     "autosaveRestored": "Alterações não salvas restauradas",
     "ReloadButtonTooltip": "Recarregar arquivo"
   },
@@ -107,6 +133,16 @@
     "delete": "Excluir",
     "pinNote": "Fixar nota",
     "unpinNote": "Desafixar nota",
+    "showNoteMarks": "Mostrar marcações de notas",
+    "hideNoteMarks": "Ocultar marcações de notas",
+    "noteMark": "Marca",
+    "noteMarkTop": "Borda superior",
+    "noteMarkRight": "Borda direita",
+    "noteMarkBottom": "Borda inferior",
+    "noteMarkLeft": "Borda esquerda",
+    "noteMarkAll": "Todas as marcas",
+    "noteMarkNone": "Sem marca",
+    "noteMarkFilter": "Marca {{mask}}",
     "matchCase": "Diferenciar maiúsculas/minúsculas",
     "matchWholeWord": "Coincidir palavra inteira",
     "useRegex": "Usar expressão regular",
@@ -137,10 +173,11 @@
     "defaultNewTabNote": "Usar notas por padrão",
     "tabSize": "Tabulação",
     "language": "Idioma",
-    "langDescription": "Contribua com traduções <a href=\"https://github.com/sheetau/monapad/blob/main/LANGUAGE.md\" target=\"_blank\">aqui</a>.",
+    "langDescription": "Contribua com traduções <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#internationalization-and-localization-guidelines\" target=\"_blank\">aqui</a>.",
+    "monacoRestartWarning": "Reinicie o Monapad para aplicar este idioma à interface do editor Monaco.",
     "customTheme": "Tema personalizado",
     "openThemeFolder": "Abrir pasta de temas",
-    "customThemeDescription": "Crie um arquivo CSS nesta pasta para adicionar e aplicar temas personalizados pelo menu de temas.\nDetalhes <a href=\"https://github.com/sheetau/monapad/blob/main/CUSTOMTHEME.md\" target=\"_blank\">aqui</a>.",
+    "customThemeDescription": "Crie um arquivo CSS nesta pasta para adicionar e aplicar temas personalizados pelo menu de temas. Detalhes <a href=\"https://github.com/sheetau/monapad/blob/main/CONTRIBUTING.md#how-to-setup-custom-theme\" target=\"_blank\">aqui</a>.",
     "resetTooltip": "Redefinir configurações"
   },
   "modal": {
